@@ -1,0 +1,593 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dynamic Network Graph with Story Points</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap" rel="stylesheet">
+    <!-- js-yaml library -->
+    <script src="https://cdn.jsdelivr.net/npm/js-yaml@4.1.0/dist/js-yaml.min.js"></script>
+    <!-- D3.js library -->
+    <script src="https://d3js.org/d3.v5.min.js"></script>
+    <style>
+        :root {
+            --bg-color: #f0f4f8;
+            --leaf-node-bg: #D0FFFF;
+            --leaf-node-border: #a0c0c0;
+            --leaf-node-text: #333;
+            --line-color: #ccc;
+            --badge-bg: #4dd0e1;
+            --badge-text: #ffffff;
+            --textarea-bg: #ffffff;
+            --textarea-border: #dfe9f2;
+            --error-color: #ef5350;
+            --header-color: #ff8a65;
+            --text-color: #37474f;
+            --filter-bg: #ffffff;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+            padding: 10px;
+            box-sizing: border-box;
+            overflow: hidden;
+        }
+
+        .container {
+            display: flex;
+            width: 100%;
+            max-width: 1600px;
+            gap: 20px;
+            height: calc(100vh - 20px);
+        }
+
+        .input-pane {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background-color: var(--textarea-bg);
+            border-radius: 12px;
+            padding: 15px;
+            border: 1px solid var(--textarea-border);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+        }
+
+        .input-pane h2 {
+            margin-top: 0;
+            font-size: 1.1rem;
+            color: var(--header-color);
+            border-bottom: 1px solid var(--textarea-border);
+            padding-bottom: 10px;
+        }
+
+        #yaml-input {
+            width: 100%;
+            height: 100%;
+            background-color: transparent;
+            border: none;
+            color: var(--text-color);
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 14px;
+            resize: none;
+            outline: none;
+        }
+
+        #error-message {
+            color: var(--error-color);
+            margin-top: 10px;
+            font-size: 0.9rem;
+            min-height: 1em;
+            white-space: pre-wrap;
+        }
+
+        .display-pane {
+            flex: 2;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .filter-container {
+            position: relative;
+            background: var(--filter-bg);
+            border-radius: 8px;
+            padding: 10px 15px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+            border: 1px solid var(--textarea-border);
+            flex-shrink: 0;
+        }
+
+        .filter-button { cursor: pointer; font-weight: 500; }
+        .filter-dropdown {
+            display: none; position: absolute; top: 100%; left: 0;
+            background: var(--filter-bg); border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1); padding: 10px;
+            margin-top: 5px; z-index: 100; min-width: 200px;
+        }
+        .filter-dropdown.show { display: block; }
+        .filter-dropdown ul { list-style: none; padding: 0; margin: 0; }
+        .filter-dropdown li { padding: 5px 10px; display: flex; align-items: center; border-radius: 4px; cursor: pointer; }
+        .filter-dropdown li label { margin-left: 8px; cursor: pointer; flex-grow: 1; }
+
+        .graph-pane {
+            flex-grow: 1; overflow: hidden; background-color: var(--bg-color);
+            border-radius: 12px; border: 1px solid var(--textarea-border);
+            cursor: grab; user-select: none;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.05); position: relative;
+        }
+        .graph-pane.panning { cursor: grabbing; }
+
+        .zoom-controls {
+            position: absolute; bottom: 15px; right: 15px; z-index: 10;
+            display: flex; flex-direction: column; gap: 5px;
+        }
+        .zoom-controls button {
+            width: 32px; height: 32px; font-size: 18px; font-weight: bold;
+            border-radius: 50%; border: 1px solid var(--textarea-border);
+            background-color: var(--filter-bg); color: var(--text-color); cursor: pointer;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1); transition: background-color 0.2s;
+        }
+        .zoom-controls button:hover { background-color: #e9e9e9; }
+
+        /* --- D3 Graph Styling --- */
+        .node rect {
+            stroke-width: 2px;
+            transition: all 0.4s ease;
+        }
+        .node text, .node tspan {
+            font-family: 'Inter', sans-serif;
+            pointer-events: none;
+            text-anchor: start;
+        }
+        .link {
+            fill: none;
+            stroke: var(--line-color);
+            stroke-width: 2px;
+        }
+
+        /* Highlighting and Dimming */
+        .node.dimmed { opacity: 0.3; }
+        .node.highlighted rect {
+            stroke: var(--header-color);
+            stroke-width: 4px;
+        }
+
+        @media (max-width: 768px) {
+            .container { flex-direction: column; height: auto; }
+            .input-pane { min-height: 250px; flex-shrink: 0; }
+            .display-pane { min-height: 400px; }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <div class="input-pane">
+            <h2>YAML Configuration</h2>
+            <textarea id="yaml-input"></textarea>
+            <div id="error-message"></div>
+        </div>
+        <div class="display-pane">
+            <div id="filter-container-wrapper"></div>
+            <div class="graph-pane" id="graph-container">
+                 <div class="zoom-controls">
+                    <button id="zoom-in">+</button>
+                    <button id="zoom-out">-</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // DOM elements
+        const yamlInput = document.getElementById('yaml-input');
+        const graphContainer = document.getElementById('graph-container');
+        const errorMessage = document.getElementById('error-message');
+        const filterWrapper = document.getElementById('filter-container-wrapper');
+
+        // State
+        let allTags = new Set();
+        let tagColorMap = new Map();
+        const tagColorPalette = [
+            { bg: '#ef476f', text: '#ffffff' }, { bg: '#ffd166', text: '#5d4037' },
+            { bg: '#06d6a0', text: '#ffffff' }, { bg: '#118ab2', text: '#ffffff' },
+            { bg: '#073b4c', text: '#ffffff' },
+        ];
+        let parentPointValues = [];
+
+        // D3 State
+        let d3Zoom, d3Svg, d3G;
+        let i = 0;
+        const duration = 750;
+        const rectHeight = 100, rectWidth = 160;
+
+        const initialYaml = `- name: Relationship enrichment
+  subnodes:
+    - name: Finish with everyone
+      description: "- share with everyone"
+    - name: Wedding
+      description: >
+        - rings - guests - venue - invites - planner - cake
+        - food - officiant - photographer
+    - name: Have kids
+      subnodes:
+        - name: Move
+          subnodes:
+            - name: Sell current house
+              subnodes:
+                - name: Fix current house
+                  description: "- shower - sprinkler - back door - mirrors"
+            - name: Find new house
+            - name: Decide where to move
+        - name: Plant seed
+        - name: Move for birth
+        - name: schedule time
+    - name: Therapy
+- name: Personal enrichment
+  subnodes:
+    - name: Take health srs
+    - name: Learn basic medical
+    - name: Read more books
+    - name: Learn piano
+    - name: Travel more
+      subnodes:
+        - name: See northern lights
+        - name: Ski
+          subnodes:
+            - name: buy plane tickets
+            - name: schedule lessons
+        - name: Dive
+    - name: Weight train`;
+
+        yamlInput.value = initialYaml;
+
+        // --- Data Parsing ---
+
+        function calculatePoints(nodes) {
+            if (!nodes) return 0;
+            let totalPoints = 0;
+            nodes.forEach(node => {
+                const hasSubnodes = node.subnodes && node.subnodes.length > 0;
+                if (hasSubnodes) {
+                    node.points = calculatePoints(node.subnodes);
+                    parentPointValues.push(node.points);
+                } else {
+                    node.points = typeof node.points === 'number' ? node.points : 1;
+                }
+                totalPoints += node.points;
+            });
+            return totalPoints;
+        }
+
+        function extractAllTags(nodes) {
+            if (!nodes) return;
+            nodes.forEach(node => {
+                if (node.tags && Array.isArray(node.tags)) {
+                    node.tags.forEach(tag => {
+                        if (!tagColorMap.has(tag)) {
+                            tagColorMap.set(tag, tagColorPalette[tagColorMap.size % tagColorPalette.length]);
+                        }
+                        allTags.add(tag);
+                    });
+                }
+                extractAllTags(node.subnodes);
+            });
+        }
+
+        // --- D3 Rendering ---
+
+        function initD3Graph(treeData) {
+            const margin = {top: 20, right: 120, bottom: 20, left: 120};
+
+            d3Zoom = d3.zoom().scaleExtent([0.2, 3]).on('zoom', () => {
+                if (d3G) {
+                    d3G.attr('transform', d3.event.transform);
+                }
+            });
+
+            d3Svg = d3.select(graphContainer).append("svg")
+                .attr("width", graphContainer.clientWidth)
+                .attr("height", graphContainer.clientHeight)
+                .call(d3Zoom);
+
+            d3G = d3Svg.append("g");
+
+            const treemap = d3.tree();
+            let root = d3.hierarchy(treeData, d => d.subnodes);
+            root.x0 = graphContainer.clientHeight / 2;
+            root.y0 = 0;
+
+            update(root, root, treemap);
+            centerView(root);
+        }
+
+        function collapse(d) {
+          if (d.children) {
+            d._children = d.children;
+            d._children.forEach(collapse);
+            d.children = null;
+          }
+        }
+
+        // Word wrapping function
+        function wrap(text, width) {
+            text.each(function() {
+                var text = d3.select(this),
+                    words = text.text().split(/\s+/).reverse(),
+                    word,
+                    line = [],
+                    lineNumber = 0,
+                    lineHeight = 1.1, // ems
+                    x = text.attr("x"),
+                    y = text.attr("y"),
+                    dy = parseFloat(text.attr("dy")),
+                    tspan = text.text(null).append("tspan").attr("x", x).attr("y", y).attr("dy", dy + "em");
+                while (word = words.pop()) {
+                    line.push(word);
+                    tspan.text(line.join(" "));
+                    if (tspan.node().getComputedTextLength() > width) {
+                        line.pop();
+                        tspan.text(line.join(" "));
+                        line = [word];
+                        tspan = text.append("tspan").attr("x", x).attr("y", y).attr("dy", ++lineNumber * lineHeight + dy + "em").text(word);
+                    }
+                }
+            });
+        }
+
+        function update(source, root, treemap) {
+            const visibleNodes = root.descendants();
+            treemap.size([visibleNodes.length * (rectHeight + 20), graphContainer.clientWidth]);
+
+            const treeData = treemap(root);
+            const nodes = treeData.descendants();
+            const links = treeData.descendants().slice(1);
+            const nodeWidth = 180;
+
+            nodes.forEach(d => { d.y = d.depth * (nodeWidth + 60) });
+
+            // ** Nodes **
+            const node = d3G.selectAll('g.node')
+                .data(nodes, d => d.id || (d.id = ++i));
+
+            const nodeEnter = node.enter().append('g')
+                .attr('class', 'node')
+                .attr('transform', `translate(${source.y0},${source.x0})`)
+                .on('click', (d) => click(d, root, treemap));
+
+            nodeEnter.append('rect')
+                .attr('class', 'node-rect')
+                .attr('width', rectWidth)
+                .attr('height', rectHeight)
+                .attr('x', 0)
+                .attr('y', -rectHeight/2)
+                .attr('rx', 10);
+
+            nodeEnter.append('text')
+                .attr("class", "points-text")
+                .attr("x", 12)
+                .attr("y", -rectHeight/2 + 20)
+                .style("font-weight", "bold")
+                .style("font-size", "14px")
+                .text(d => d.data.points + ' pts');
+
+            nodeEnter.append('text')
+                .attr("class", "name-text")
+                .attr("x", 12)
+                .attr("y", -5)
+                .attr("dy", ".35em")
+                .style("font-weight", "bold")
+                .text(d => d.data.name);
+
+            nodeEnter.append('text')
+                .attr("class", "desc-text")
+                .attr("x", 12)
+                .attr("y", 10)
+                .attr("dy", "1em")
+                .style("font-size", "11px")
+                .text(d => d.data.description)
+                .call(wrap, rectWidth - 24);
+
+
+            const nodeUpdate = nodeEnter.merge(node);
+
+            nodeUpdate.transition().duration(duration)
+                .attr('transform', d => `translate(${d.y},${d.x})`);
+
+            // Style nodes based on data
+            nodeUpdate.select('rect.node-rect')
+                .style("fill", d => getNodeColor(d))
+                .style("stroke", d => {
+                    const fillColor = getNodeColor(d);
+                    if (fillColor && fillColor.startsWith('#')) {
+                        return darkenColor(fillColor, 15);
+                    }
+                    return 'var(--leaf-node-border)';
+                });
+
+            nodeUpdate.selectAll('.name-text, .desc-text')
+                .style("fill", d => isLeaf(d) ? 'var(--leaf-node-text)' : '#fff');
+
+            nodeUpdate.select('.points-text')
+                .style("fill", d => isLeaf(d) ? 'rgba(0,0,0,0.4)' : 'rgba(255,255,255,0.7)');
+
+
+            const nodeExit = node.exit().transition().duration(duration)
+                .attr('transform', `translate(${source.y},${source.x})`)
+                .remove();
+
+            nodeExit.select('rect').style('opacity', 1e-6);
+            nodeExit.select('text').style('fill-opacity', 1e-6);
+
+            // ** Links **
+            const link = d3G.selectAll('path.link')
+                .data(links, d => d.id);
+
+            const linkEnter = link.enter().insert('path', "g")
+                .attr("class", "link")
+                .attr('d', () => {
+                    const o = {x: source.x0, y: source.y0};
+                    return diagonal(o, o);
+                });
+
+            const linkUpdate = linkEnter.merge(link);
+            linkUpdate.transition().duration(duration)
+                .attr('d', d => diagonal(d, d.parent));
+
+            link.exit().transition().duration(duration)
+                .attr('d', () => {
+                    const o = {x: source.x, y: source.y};
+                    return diagonal(o, o);
+                })
+                .remove();
+
+            nodes.forEach(d => {
+                d.x0 = d.x;
+                d.y0 = d.y;
+            });
+
+            function diagonal(s, d) {
+                return `M ${s.y + rectWidth} ${s.x}
+                        C ${(s.y + d.y + rectWidth) / 2} ${s.x},
+                          ${(s.y + d.y + rectWidth) / 2} ${d.x},
+                          ${d.y} ${d.x}`;
+            }
+        }
+
+        function click(d, root, treemap) {
+            if (d.children) {
+                d._children = d.children;
+                d.children = null;
+            } else {
+                d.children = d._children;
+                d._children = null;
+            }
+            update(d, root, treemap);
+            setTimeout(() => centerView(root), duration);
+        }
+
+        function isLeaf(d) {
+            return !d.children && !d._children;
+        }
+
+        // --- Color and Style Helpers ---
+        function getNodeColor(d) {
+            if (isLeaf(d)) return 'var(--leaf-node-bg)';
+
+            const pointColorPalette = ['#006B3D', '#639754', '#7BB662', '#FFD301', '#E03C32', '#D61F1F'];
+            if (parentPointValues.length === 0) return pointColorPalette[0];
+
+            const minPoints = Math.min(...parentPointValues);
+            const maxPoints = Math.max(...parentPointValues);
+            const range = maxPoints - minPoints;
+
+            if (range === 0) return pointColorPalette[0];
+
+            const percent = (d.data.points - minPoints) / range;
+            const colorIndex = Math.round(percent * (pointColorPalette.length - 1));
+
+            if (isNaN(colorIndex)) return pointColorPalette[0];
+            return pointColorPalette[colorIndex];
+        }
+
+        function darkenColor(hex, percent) {
+            if (!hex || !hex.startsWith('#')) return '#cccccc';
+            let r = parseInt(hex.substring(1, 3), 16);
+            let g = parseInt(hex.substring(3, 5), 16);
+            let b = parseInt(hex.substring(5, 7), 16);
+            r = parseInt(r * (100 - percent) / 100);
+            g = parseInt(g * (100 - percent) / 100);
+            b = parseInt(b * (100 - percent) / 100);
+            r = (r < 255) ? r : 255;
+            g = (g < 255) ? g : 255;
+            b = (b < 255) ? b : 255;
+            return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
+        }
+
+        // --- Main App Logic ---
+        function renderGraph() {
+            const yamlString = yamlInput.value;
+            errorMessage.textContent = '';
+            parentPointValues = [];
+
+            try {
+                let data = jsyaml.load(yamlString);
+                if (!Array.isArray(data)) throw new Error("YAML root must be an array of nodes.");
+
+                const rootNode = data.length === 1 ? data[0] : { name: "Root", subnodes: data, isVirtual: true };
+
+                calculatePoints(rootNode.subnodes || [rootNode]);
+                // extractAllTags(rootNode); // Tags functionality disabled for D3 version for simplicity
+
+                d3.select(graphContainer).select("svg").remove();
+                initD3Graph(rootNode);
+
+            } catch (e) {
+                errorMessage.textContent = `YAML Error: ${e.message}`;
+                d3.select(graphContainer).select("svg").remove();
+            }
+        }
+
+        // --- Pan and Zoom ---
+        function centerView(root) {
+            if (!d3G || !d3G.node()) return;
+
+            const bounds = d3G.node().getBBox();
+            const parent = d3G.node().parentElement;
+            const fullWidth = parent.clientWidth;
+            const fullHeight = parent.clientHeight;
+            const width = bounds.width;
+            const height = bounds.height;
+            const midX = bounds.x + width / 2;
+            const midY = bounds.y + height / 2;
+
+            if (width === 0 || height === 0) return;
+
+            const scale = 0.85 / Math.max(width / fullWidth, height / fullHeight);
+            const translate = [fullWidth / 2 - scale * midX, fullHeight / 2 - scale * midY];
+
+            const transform = d3.zoomIdentity
+                .translate(translate[0], translate[1])
+                .scale(scale);
+
+            if (d3Svg) {
+                d3Svg.transition().duration(duration)
+                    .call(d3Zoom.transform, transform);
+            }
+        }
+
+        document.getElementById('zoom-in').addEventListener('click', () => {
+            if (d3Svg) d3Svg.transition().call(d3Zoom.scaleBy, 1.2);
+        });
+        document.getElementById('zoom-out').addEventListener('click', () => {
+            if (d3Svg) d3Svg.transition().call(d3Zoom.scaleBy, 0.8);
+        });
+
+        // --- Initial Load ---
+        yamlInput.addEventListener('input', renderGraph);
+        window.addEventListener('load', renderGraph);
+        window.addEventListener('resize', () => {
+            if (d3Svg) {
+                d3Svg.attr("width", graphContainer.clientWidth)
+                     .attr("height", graphContainer.clientHeight);
+            }
+            const rootSelection = d3.select('.node');
+            if (rootSelection.empty()) return;
+
+            const root = rootSelection.datum();
+            if (root) {
+                centerView(root);
+            }
+        });
+    </script>
+
+</body>
+</html>
