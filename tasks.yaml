@@ -1,0 +1,99 @@
+- name: Root
+  points: 2
+  subnodes:
+  - name: Relationship enrichments
+    points: 2
+    subnodes:
+    - name: Finish will
+      subnodes:
+        - name: Share will
+          subnodes:
+            - name: Write will
+              points: 3
+              tags: [sentimental]
+    - name: Wedding
+      points: 5
+      subnodes:
+      - name: rings
+        points: 5
+        tags: [decision, sentimental]
+      - name: guests
+        points: 3
+        tags: [decision]
+      - name: venue
+        points: 3
+        tags: [decision]
+      - name: invites
+        points: 3
+      - name: planner
+        points: 4
+      - name: cake
+        points: 4
+        tags: [decision, sentimental]
+      - name: food
+        points: 4
+        tags: [decision]
+      - name: officiant
+        points: 2
+      - name: photographer
+        points: 2
+        tags: [decision, sentimental]
+    - name: Have kids
+      subnodes:
+      - name: Move
+        points: 3
+        subnodes:
+          - name: Sell current house
+            subnodes:
+              - name: Fix current house
+                subnodes:
+                - name: Fix shower
+                  points: 8
+                  tags: [decision]
+                - name: Fix sprinkler
+                  points: 4
+                - name: Fix backdoor
+                  points: 6
+                - name: Fix mirrors
+                  points: 7
+              - name: List it
+                tags: [decision, sentimental]
+                subnodes:
+                - name: Pick realtor
+                  points: 5
+          - name: Find new house
+            points: 12
+            tags: [decision]
+          - name: Decide where to move
+            points: 15
+            tags: [decision, sentimental]
+      - name: Plant seed
+        points: 3
+        subnodes:
+        - name: plan time
+          points: 2
+        - name: find place
+          points: 3
+      - name: Move for birth
+        points: 10
+      - name: Research/read books about it
+        points: 5
+      - name: Therapy
+        points: 7
+  - name: Personal enrichment
+    subnodes:
+    - name: Weight train
+      subnodes:
+      - name: build muscles
+        points: 7
+    - name: Learn basic medical
+    - name: Read more books
+    - name: Learn piano
+    - name: Travel more
+      subnodes:
+      - name: See northern lights
+      - name: Ski
+        subnodes:
+          - name: buy plane tickets
+          - name: schedule lessons
+      - name: Dive

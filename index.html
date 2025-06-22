@@ -215,6 +215,13 @@
             stroke-width: 4px;
         }
 
+        .tag-text {
+            font-size: 10px;
+            font-weight: 500;
+            fill: #fff;
+            text-anchor: middle;
+        }
+
         @media (max-width: 768px) {
             .container { flex-direction: column; height: auto; }
             .input-pane-wrapper {
@@ -263,9 +270,8 @@
         let allTags = new Set();
         let tagColorMap = new Map();
         const tagColorPalette = [
-            { bg: '#ef476f', text: '#ffffff' }, { bg: '#ffd166', text: '#5d4037' },
-            { bg: '#06d6a0', text: '#ffffff' }, { bg: '#118ab2', text: '#ffffff' },
-            { bg: '#073b4c', text: '#ffffff' },
+            '#f94144', '#f3722c', '#f8961e', '#f9844a', '#f9c74f',
+            '#90be6d', '#43aa8b', '#4d908e', '#577590', '#277da1'
         ];
         let parentPointValues = [];
 
@@ -277,22 +283,21 @@
 
         // --- Data Parsing ---
 
-        function calculatePoints(nodes) {
-            if (!nodes) return 0;
-            let totalPoints = 0;
-            nodes.forEach(node => {
-                const hasSubnodes = node.subnodes && node.subnodes.length > 0;
-                if (hasSubnodes) {
-                    const selfPoints = typeof node.points === 'number' ? node.points : 1;
-                    const childrenPoints = calculatePoints(node.subnodes);
-                    node.points = selfPoints + childrenPoints;
-                    parentPointValues.push(node.points);
-                } else {
-                    node.points = typeof node.points === 'number' ? node.points : 1;
-                }
-                totalPoints += node.points;
-            });
-            return totalPoints;
+        function calculatePoints(node) {
+            const hasSubnodes = node.subnodes && node.subnodes.length > 0;
+            if (hasSubnodes) {
+                let childrenPoints = 0;
+                node.subnodes.forEach(child => {
+                     childrenPoints += calculatePoints(child);
+                });
+
+                const selfPoints = (node.isVirtual) ? 0 : (typeof node.points === 'number' ? node.points : 1);
+                node.points = selfPoints + childrenPoints;
+                parentPointValues.push(node.points);
+            } else {
+                node.points = typeof node.points === 'number' ? node.points : 1;
+            }
+            return node.points;
         }
 
         function extractAllTags(nodes) {
@@ -345,19 +350,19 @@
           }
         }
 
-        // Word wrapping function
         function wrap(text, width) {
             text.each(function() {
                 var text = d3.select(this),
-                    words = text.text().split(/\s+/).reverse(),
+                    words = (text.text() || "").split(/\s+/).reverse(),
                     word,
                     line = [],
                     lineNumber = 0,
-                    lineHeight = 1.1, // ems
+                    lineHeight = 1.1,
                     x = text.attr("x"),
                     y = text.attr("y"),
-                    dy = parseFloat(text.attr("dy")),
+                    dy = text.attr("dy") ? parseFloat(text.attr("dy")) : 0,
                     tspan = text.text(null).append("tspan").attr("x", x).attr("y", y).attr("dy", dy + "em");
+
                 while (word = words.pop()) {
                     line.push(word);
                     tspan.text(line.join(" "));
@@ -382,7 +387,6 @@
 
             nodes.forEach(d => { d.y = d.depth * (nodeWidth + 60) });
 
-            // ** Nodes **
             const node = d3G.selectAll('g.node')
                 .data(nodes, d => d.id || (d.id = ++i));
 
@@ -402,27 +406,23 @@
             nodeEnter.append('text')
                 .attr("class", "points-text")
                 .attr("x", 12)
-                .attr("y", -rectHeight/2 + 20)
-                .style("font-weight", "bold")
-                .style("font-size", "14px")
-                .text(d => d.data.points + ' pts');
+                .attr("y", -rectHeight/2 + 20);
 
             nodeEnter.append('text')
                 .attr("class", "name-text")
                 .attr("x", 12)
-                .attr("y", -5)
-                .attr("dy", ".35em")
-                .style("font-weight", "bold")
-                .text(d => d.data.name);
+                .attr("y", -rectHeight/2 + 40)
+                .attr("dy", ".35em");
 
             nodeEnter.append('text')
                 .attr("class", "desc-text")
                 .attr("x", 12)
-                .attr("y", 10)
-                .attr("dy", "1em")
-                .style("font-size", "11px")
-                .text(d => d.data.description)
-                .call(wrap, rectWidth - 24);
+                .attr("y", -rectHeight/2 + 60)
+                .attr("dy", ".35em");
+
+            nodeEnter.append('g')
+                .attr('class', 'tags-container')
+                .attr('transform', `translate(${rectWidth - 12}, ${-rectHeight/2 + 18})`);
 
 
             const nodeUpdate = nodeEnter.merge(node);
@@ -430,14 +430,22 @@
             nodeUpdate.transition().duration(duration)
                 .attr('transform', d => `translate(${d.y},${d.x})`);
 
-            // Style nodes based on data
+            nodeUpdate.select('.points-text')
+                .text(d => d.data.points);
+
+            nodeUpdate.select('.name-text')
+                .text(d => d.data.name)
+                .call(wrap, rectWidth - 24);
+
+            nodeUpdate.select('.desc-text')
+                .text(d => d.data.description || "")
+                .call(wrap, rectWidth - 24);
+
             nodeUpdate.select('rect.node-rect')
                 .style("fill", d => getNodeColor(d))
                 .style("stroke", d => {
                     const fillColor = getNodeColor(d);
-                    if (fillColor && fillColor.startsWith('#')) {
-                        return darkenColor(fillColor, 15);
-                    }
+                    if (fillColor && fillColor.startsWith('#')) return darkenColor(fillColor, 15);
                     return 'var(--leaf-node-border)';
                 });
 
@@ -447,17 +455,54 @@
             nodeUpdate.select('.points-text')
                 .style("fill", d => isLeaf(d) ? 'rgba(0,0,0,0.4)' : 'rgba(255,255,255,0.7)');
 
+            nodeUpdate.each(function(d) {
+                const nodeGroup = d3.select(this);
+                const tagsContainer = nodeGroup.select('.tags-container');
+                const tagData = d.data.tags || [];
+
+                const tags = tagsContainer.selectAll('.tag-group').data(tagData, tag => tag);
+
+                tags.exit().remove();
+
+                const tagsEnter = tags.enter().append('g').attr('class', 'tag-group');
+
+                tagsEnter.append('rect').attr('rx', 4);
+                tagsEnter.append('text').attr('class', 'tag-text');
+
+                let currentX = 0;
+
+                tagsContainer.selectAll('.tag-group').each(function(tagValue) {
+                    const group = d3.select(this);
+                    const textEl = group.select('text').text(tagValue);
+                    const rectEl = group.select('rect');
+
+                    const textWidth = textEl.node().getComputedTextLength();
+                    const tagWidth = textWidth + 12;
+
+                    currentX -= tagWidth; // Position from right to left
+
+                    group.attr('transform', `translate(${currentX}, 0)`);
+
+                    rectEl.attr('width', tagWidth)
+                        .attr('height', 18)
+                        .attr('y', -9)
+                        .style('fill', tagColorMap.get(tagValue));
+
+                    textEl.attr('x', tagWidth / 2 - 20)
+                          .attr('y', 0)
+                          .attr('dy', '.35em');
+
+                    currentX -= 4; // Add spacing
+                });
+            });
 
             const nodeExit = node.exit().transition().duration(duration)
-                .attr('transform', `translate(${source.y},${source.x})`)
-                .remove();
+                .attr('transform', `translate(${source.y},${source.x})`).remove();
 
             nodeExit.select('rect').style('opacity', 1e-6);
             nodeExit.select('text').style('fill-opacity', 1e-6);
 
-            // ** Links **
-            const link = d3G.selectAll('path.link')
-                .data(links, d => d.id);
+            const link = d3G.selectAll('path.link').data(links, d => d.id);
 
             const linkEnter = link.enter().insert('path', "g")
                 .attr("class", "link")
@@ -471,16 +516,10 @@
                 .attr('d', d => diagonal(d, d.parent));
 
             link.exit().transition().duration(duration)
-                .attr('d', () => {
-                    const o = {x: source.x, y: source.y};
-                    return diagonal(o, o);
-                })
+                .attr('d', () => { const o = {x: source.x, y: source.y}; return diagonal(o, o); })
                 .remove();
 
-            nodes.forEach(d => {
-                d.x0 = d.x;
-                d.y0 = d.y;
-            });
+            nodes.forEach(d => { d.x0 = d.x; d.y0 = d.y; });
 
             function diagonal(s, d) {
                 return `M ${s.y + rectWidth} ${s.x}
@@ -506,7 +545,6 @@
             return !d.children && !d._children;
         }
 
-        // --- Color and Style Helpers ---
         function getNodeColor(d) {
             if (isLeaf(d)) return 'var(--leaf-node-bg)';
 
@@ -540,10 +578,11 @@
             return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
         }
 
-        // --- Main App Logic ---
         function processAndRender(yamlString) {
             errorMessage.textContent = '';
             parentPointValues = [];
+            allTags.clear();
+            tagColorMap.clear();
 
             try {
                 let data = jsyaml.load(yamlString);
@@ -551,8 +590,9 @@
 
                 const rootNode = data.length === 1 ? data[0] : { name: "Root", subnodes: data, isVirtual: true };
 
-                calculatePoints(rootNode.subnodes || [rootNode]);
-                // extractAllTags(rootNode); // Tags functionality disabled for D3 version for simplicity
+                calculatePoints(rootNode);
+                extractAllTags(rootNode.subnodes || [rootNode]);
+                renderFilterControls();
 
                 d3.select(graphContainer).select("svg").remove();
                 initD3Graph(rootNode);
@@ -563,7 +603,78 @@
             }
         }
 
-        // --- Pan and Zoom ---
+        function renderFilterControls() {
+            if (allTags.size === 0) {
+                filterWrapper.innerHTML = '';
+                return;
+            }
+
+            const radioButtons = Array.from(allTags).sort().map(tag => `
+                <li>
+                    <input type="radio" id="tag-filter-${tag}" name="tag-filter" value="${tag}">
+                    <label for="tag-filter-${tag}">${tag}</label>
+                </li>
+            `).join('');
+
+            filterWrapper.innerHTML = `
+                <div class="filter-container">
+                    <div class="filter-button">Filter by Tag ▾</div>
+                    <div class="filter-dropdown">
+                        <ul>
+                            <li>
+                                <input type="radio" id="tag-filter-all" name="tag-filter" value="all" checked>
+                                <label for="tag-filter-all">Show All</label>
+                            </li>
+                            ${radioButtons}
+                        </ul>
+                    </div>
+                </div>
+            `;
+
+            const filterButton = filterWrapper.querySelector('.filter-button');
+            const dropdown = filterWrapper.querySelector('.filter-dropdown');
+            filterButton.addEventListener('click', () => dropdown.classList.toggle('show'));
+
+            dropdown.querySelectorAll('input[type="radio"]').forEach(radio => {
+                radio.addEventListener('change', applyFilter);
+            });
+
+            document.addEventListener('click', (e) => {
+                if (!filterWrapper.contains(e.target)) {
+                    dropdown.classList.remove('show');
+                }
+            });
+        }
+
+        function applyFilter() {
+            const checkedFilter = filterWrapper.querySelector('input[name="tag-filter"]:checked');
+            if (!checkedFilter) return;
+
+            const filterValue = checkedFilter.value;
+            const allNodes = d3G.selectAll('g.node');
+
+            if (filterValue === 'all') {
+                allNodes.classed('highlighted', false).classed('dimmed', false);
+                return;
+            }
+
+            allNodes.each(function(d) {
+                const node = d3.select(this);
+                const nodeTags = d.data.tags || [];
+                const hasDirectMatch = nodeTags.includes(filterValue);
+
+                let hasDescendantMatch = false;
+                d.descendants().forEach(desc => {
+                    if ((desc.data.tags || []).includes(filterValue)) {
+                        hasDescendantMatch = true;
+                    }
+                });
+
+                node.classed('highlighted', hasDirectMatch);
+                node.classed('dimmed', !hasDirectMatch && !hasDescendantMatch);
+            });
+        }
+
         function centerView(root) {
             if (!d3G || !d3G.node()) return;
 
@@ -598,47 +709,105 @@
             if (d3Svg) d3Svg.transition().call(d3Zoom.scaleBy, 0.8);
         });
 
-        // --- Initial Load ---
-        const initialYamlContent = `- name: Relationship enrichment
+        const initialYamlContent = `- name: Root
   points: 2
   subnodes:
-    - name: Finish with everyone
-      description: "- share with everyone"
+  - name: Relationship enrichments
+    points: 2
+    subnodes:
+    - name: Finish will
+      subnodes:
+        - name: Share will
+          subnodes:
+            - name: Write will
+              points: 3
+              tags: [sentimental]
     - name: Wedding
       points: 5
-      description: >
-        - rings - guests - venue - invites - planner - cake
-        - food - officiant - photographer
+      subnodes:
+      - name: rings
+        points: 5
+        tags: [decision, sentimental]
+      - name: guests
+        points: 3
+        tags: [decision]
+      - name: venue
+        points: 3
+        tags: [decision]
+      - name: invites
+        points: 3
+      - name: planner
+        points: 4
+      - name: cake
+        points: 4
+        tags: [decision, sentimental]
+      - name: food
+        points: 4
+        tags: [decision]
+      - name: officiant
+        points: 2
+      - name: photographer
+        points: 2
+        tags: [decision, sentimental]
     - name: Have kids
       subnodes:
-        - name: Move
+      - name: Move
+        points: 3
+        subnodes:
+          - name: Sell current house
+            subnodes:
+              - name: Fix current house
+                subnodes:
+                - name: Fix shower
+                  points: 8
+                  tags: [decision]
+                - name: Fix sprinkler
+                  points: 4
+                - name: Fix backdoor
+                  points: 6
+                - name: Fix mirrors
+                  points: 7
+              - name: List it
+                tags: [decision, sentimental]
+                subnodes:
+                - name: Pick realtor
+                  points: 5
+          - name: Find new house
+            points: 12
+            tags: [decision]
+          - name: Decide where to move
+            points: 15
+            tags: [decision, sentimental]
+      - name: Plant seed
+        points: 3
+        subnodes:
+        - name: plan time
+          points: 2
+        - name: find place
           points: 3
-          subnodes:
-            - name: Sell current house
-              subnodes:
-                - name: Fix current house
-                  description: "- shower - sprinkler - back door - mirrors"
-            - name: Find new house
-            - name: Decide where to move
-        - name: Plant seed
-        - name: Move for birth
-        - name: schedule time
-    - name: Therapy
-- name: Personal enrichment
-  subnodes:
-    - name: Take health srs
+      - name: Move for birth
+        points: 10
+      - name: Research/read books about it
+        points: 5
+      - name: Therapy
+        points: 7
+  - name: Personal enrichment
+    subnodes:
+    - name: Weight train
+      subnodes:
+      - name: build muscles
+        points: 7
     - name: Learn basic medical
     - name: Read more books
     - name: Learn piano
     - name: Travel more
       subnodes:
-        - name: See northern lights
-        - name: Ski
-          subnodes:
-            - name: buy plane tickets
-            - name: schedule lessons
-        - name: Dive
-    - name: Weight train`;
+      - name: See northern lights
+      - name: Ski
+        subnodes:
+          - name: buy plane tickets
+          - name: schedule lessons
+      - name: Dive`;
 
         yamlInput.addEventListener('input', (e) => processAndRender(e.target.value));
 
@@ -649,7 +818,6 @@
 
         yamlToggle.addEventListener('click', () => {
             yamlPaneWrapper.classList.toggle('collapsed');
-            // Recalculate view after transition
             yamlPaneWrapper.addEventListener('transitionend', () => {
                  const rootSelection = d3.select('.node');
                  if (rootSelection.empty()) return;
