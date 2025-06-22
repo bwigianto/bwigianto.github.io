@@ -45,8 +45,17 @@
             display: flex;
             width: 100%;
             max-width: 1600px;
-            gap: 20px;
+            gap: 0; /* Changed from 20px to 0 */
             height: calc(100vh - 20px);
+            position: relative;
+        }
+
+        /* Collapsible Input Pane */
+        .input-pane-wrapper {
+            display: flex;
+            flex-shrink: 0;
+            transition: all 0.5s ease;
+            position: relative;
         }
 
         .input-pane {
@@ -58,7 +67,46 @@
             padding: 15px;
             border: 1px solid var(--textarea-border);
             box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+            width: 350px; /* Give it a fixed width */
+            overflow: hidden;
+            transition: all 0.5s ease;
         }
+
+        .input-pane-wrapper.collapsed .input-pane {
+            width: 0;
+            padding: 0;
+            border: 0;
+        }
+
+        #yaml-toggle {
+            position: absolute;
+            top: 50%;
+            right: -20px;
+            transform: translateY(-50%);
+            width: 20px;
+            height: 60px;
+            background-color: var(--filter-bg);
+            border: 1px solid var(--textarea-border);
+            border-left: none;
+            border-radius: 0 8px 8px 0;
+            cursor: pointer;
+            z-index: 20;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        #yaml-toggle::before {
+            content: '◀';
+            font-size: 14px;
+            color: var(--text-color);
+            transition: transform 0.5s ease;
+        }
+
+        .input-pane-wrapper.collapsed #yaml-toggle::before {
+            transform: rotate(180deg);
+        }
+
 
         .input-pane h2 {
             margin-top: 0;
@@ -66,6 +114,7 @@
             color: var(--header-color);
             border-bottom: 1px solid var(--textarea-border);
             padding-bottom: 10px;
+            white-space: nowrap;
         }
 
         #yaml-input {
@@ -89,10 +138,16 @@
         }
 
         .display-pane {
-            flex: 2;
+            flex: 1; /* Changed from 2 to 1 */
             display: flex;
             flex-direction: column;
             gap: 10px;
+            margin-left: 20px;
+            transition: margin-left 0.5s ease;
+        }
+
+        .input-pane-wrapper.collapsed + .display-pane {
+            margin-left: 0;
         }
 
         .filter-container {
@@ -162,18 +217,27 @@
 
         @media (max-width: 768px) {
             .container { flex-direction: column; height: auto; }
-            .input-pane { min-height: 250px; flex-shrink: 0; }
-            .display-pane { min-height: 400px; }
+            .input-pane-wrapper {
+                width: 100%;
+                margin-bottom: 20px;
+            }
+            .display-pane {
+                margin-left: 0;
+            }
+            .input-pane { width: 100%; }
         }
     </style>
 </head>
 <body>
 
     <div class="container">
-        <div class="input-pane">
-            <h2>YAML Configuration</h2>
-            <textarea id="yaml-input"></textarea>
-            <div id="error-message"></div>
+        <div class="input-pane-wrapper collapsed" id="yaml-pane-wrapper">
+             <div class="input-pane" id="yaml-pane">
+                <h2>YAML Configuration</h2>
+                <textarea id="yaml-input"></textarea>
+                <div id="error-message"></div>
+            </div>
+            <button id="yaml-toggle"></button>
         </div>
         <div class="display-pane">
             <div id="filter-container-wrapper"></div>
@@ -192,6 +256,8 @@
         const graphContainer = document.getElementById('graph-container');
         const errorMessage = document.getElementById('error-message');
         const filterWrapper = document.getElementById('filter-container-wrapper');
+        const yamlPaneWrapper = document.getElementById('yaml-pane-wrapper');
+        const yamlToggle = document.getElementById('yaml-toggle');
 
         // State
         let allTags = new Set();
@@ -209,46 +275,6 @@
         const duration = 750;
         const rectHeight = 100, rectWidth = 160;
 
-        const initialYaml = `- name: Relationship enrichment
-  subnodes:
-    - name: Finish with everyone
-      description: "- share with everyone"
-    - name: Wedding
-      description: >
-        - rings - guests - venue - invites - planner - cake
-        - food - officiant - photographer
-    - name: Have kids
-      subnodes:
-        - name: Move
-          subnodes:
-            - name: Sell current house
-              subnodes:
-                - name: Fix current house
-                  description: "- shower - sprinkler - back door - mirrors"
-            - name: Find new house to live
-            - name: Decide where to move
-        - name: Plant seed
-        - name: Move for birth
-        - name: schedule time
-    - name: Therapy
-- name: Personal enrichment
-  subnodes:
-    - name: Take health srs
-    - name: Learn basic medical
-    - name: Read more books
-    - name: Learn piano
-    - name: Travel more
-      subnodes:
-        - name: See northern lights
-        - name: Ski
-          subnodes:
-            - name: buy plane tickets
-            - name: schedule lessons
-        - name: Dive
-    - name: Weight train`;
-
-        yamlInput.value = initialYaml;
-
         // --- Data Parsing ---
 
         function calculatePoints(nodes) {
@@ -257,7 +283,9 @@
             nodes.forEach(node => {
                 const hasSubnodes = node.subnodes && node.subnodes.length > 0;
                 if (hasSubnodes) {
-                    node.points = calculatePoints(node.subnodes);
+                    const selfPoints = typeof node.points === 'number' ? node.points : 1;
+                    const childrenPoints = calculatePoints(node.subnodes);
+                    node.points = selfPoints + childrenPoints;
                     parentPointValues.push(node.points);
                 } else {
                     node.points = typeof node.points === 'number' ? node.points : 1;
@@ -513,8 +541,7 @@
         }
 
         // --- Main App Logic ---
-        function renderGraph() {
-            const yamlString = yamlInput.value;
+        function processAndRender(yamlString) {
             errorMessage.textContent = '';
             parentPointValues = [];
 
@@ -572,8 +599,67 @@
         });
 
         // --- Initial Load ---
-        yamlInput.addEventListener('input', renderGraph);
-        window.addEventListener('load', renderGraph);
+        const initialYamlContent = `- name: Relationship enrichment
+  points: 2
+  subnodes:
+    - name: Finish with everyone
+      description: "- share with everyone"
+    - name: Wedding
+      points: 5
+      description: >
+        - rings - guests - venue - invites - planner - cake
+        - food - officiant - photographer
+    - name: Have kids
+      subnodes:
+        - name: Move
+          points: 3
+          subnodes:
+            - name: Sell current house
+              subnodes:
+                - name: Fix current house
+                  description: "- shower - sprinkler - back door - mirrors"
+            - name: Find new house
+            - name: Decide where to move
+        - name: Plant seed
+        - name: Move for birth
+        - name: schedule time
+    - name: Therapy
+- name: Personal enrichment
+  subnodes:
+    - name: Take health srs
+    - name: Learn basic medical
+    - name: Read more books
+    - name: Learn piano
+    - name: Travel more
+      subnodes:
+        - name: See northern lights
+        - name: Ski
+          subnodes:
+            - name: buy plane tickets
+            - name: schedule lessons
+        - name: Dive
+    - name: Weight train`;
+
+        yamlInput.addEventListener('input', (e) => processAndRender(e.target.value));
+
+        window.addEventListener('load', () => {
+            yamlInput.value = initialYamlContent;
+            processAndRender(initialYamlContent);
+        });
+
+        yamlToggle.addEventListener('click', () => {
+            yamlPaneWrapper.classList.toggle('collapsed');
+            // Recalculate view after transition
+            yamlPaneWrapper.addEventListener('transitionend', () => {
+                 const rootSelection = d3.select('.node');
+                 if (rootSelection.empty()) return;
+                 const root = rootSelection.datum();
+                 if (root) {
+                    centerView(root);
+                 }
+            }, {once: true});
+        });
+
         window.addEventListener('resize', () => {
             if (d3Svg) {
                 d3Svg.attr("width", graphContainer.clientWidth)
