@@ -45,7 +45,7 @@
             display: flex;
             width: 100%;
             max-width: 1600px;
-            gap: 0; /* Changed from 20px to 0 */
+            gap: 0;
             height: calc(100vh - 20px);
             position: relative;
         }
@@ -67,7 +67,7 @@
             padding: 15px;
             border: 1px solid var(--textarea-border);
             box-shadow: 0 4px 12px rgba(0,0,0,0.05);
-            width: 350px; /* Give it a fixed width */
+            width: 350px;
             overflow: hidden;
             transition: all 0.5s ease;
         }
@@ -107,7 +107,6 @@
             transform: rotate(180deg);
         }
 
-
         .input-pane h2 {
             margin-top: 0;
             font-size: 1.1rem;
@@ -138,7 +137,7 @@
         }
 
         .display-pane {
-            flex: 1; /* Changed from 2 to 1 */
+            flex: 1;
             display: flex;
             flex-direction: column;
             gap: 10px;
@@ -168,7 +167,11 @@
             margin-top: 5px; z-index: 100; min-width: 200px;
         }
         .filter-dropdown.show { display: block; }
-        .filter-dropdown ul { list-style: none; padding: 0; margin: 0; }
+        .filter-dropdown ul {
+            list-style: none; padding: 0; margin: 0;
+            max-height: 250px; /* Added max-height */
+            overflow-y: auto; /* Added overflow for scrolling */
+        }
         .filter-dropdown li { padding: 5px 10px; display: flex; align-items: center; border-radius: 4px; cursor: pointer; }
         .filter-dropdown li label { margin-left: 8px; cursor: pointer; flex-grow: 1; }
 
@@ -183,6 +186,7 @@
         .zoom-controls {
             position: absolute; bottom: 15px; right: 15px; z-index: 10;
             display: flex; flex-direction: column; gap: 5px;
+            pointer-events: all;
         }
         .zoom-controls button {
             width: 32px; height: 32px; font-size: 18px; font-weight: bold;
@@ -215,7 +219,7 @@
             stroke-width: 4px;
         }
 
-        .tag-text {
+        .tag-text, .badge-text {
             font-size: 10px;
             font-weight: 500;
             fill: #fff;
@@ -300,6 +304,19 @@
             return node.points;
         }
 
+        function precomputeDescendantCounts(node) {
+            if (!node.subnodes || node.subnodes.length === 0) {
+                node.descendantCount = 0;
+                return 0;
+            }
+            let count = node.subnodes.length;
+            node.subnodes.forEach(child => {
+                count += precomputeDescendantCounts(child);
+            });
+            node.descendantCount = count;
+            return count;
+        }
+
         function extractAllTags(nodes) {
             if (!nodes) return;
             nodes.forEach(node => {
@@ -318,8 +335,6 @@
         // --- D3 Rendering ---
 
         function initD3Graph(treeData) {
-            const margin = {top: 20, right: 120, bottom: 20, left: 120};
-
             d3Zoom = d3.zoom().scaleExtent([0.2, 3]).on('zoom', () => {
                 if (d3G) {
                     d3G.attr('transform', d3.event.transform);
@@ -327,8 +342,8 @@
             });
 
             d3Svg = d3.select(graphContainer).append("svg")
-                .attr("width", graphContainer.clientWidth)
-                .attr("height", graphContainer.clientHeight)
+                .attr("width", "100%")
+                .attr("height", "100%")
                 .call(d3Zoom);
 
             d3G = d3Svg.append("g");
@@ -383,9 +398,8 @@
             const treeData = treemap(root);
             const nodes = treeData.descendants();
             const links = treeData.descendants().slice(1);
-            const nodeWidth = 180;
 
-            nodes.forEach(d => { d.y = d.depth * (nodeWidth + 60) });
+            nodes.forEach(d => { d.y = d.depth * (rectWidth + 80) });
 
             const node = d3G.selectAll('g.node')
                 .data(nodes, d => d.id || (d.id = ++i));
@@ -421,9 +435,19 @@
                 .attr("dy", ".35em");
 
             nodeEnter.append('g')
-                .attr('class', 'tags-container')
-                .attr('transform', `translate(${rectWidth - 12}, ${-rectHeight/2 + 18})`);
+                .attr('class', 'tags-container');
 
+            const badgeEnter = nodeEnter.append('g')
+                .attr('class', 'collapse-badge')
+                .style('display', 'none');
+
+            badgeEnter.append('circle')
+                .attr('r', 12)
+                .style('fill', 'var(--badge-bg)');
+
+            badgeEnter.append('text')
+                .attr('class', 'badge-text')
+                .attr('dy', '.35em');
 
             const nodeUpdate = nodeEnter.merge(node);
 
@@ -455,6 +479,13 @@
             nodeUpdate.select('.points-text')
                 .style("fill", d => isLeaf(d) ? 'rgba(0,0,0,0.4)' : 'rgba(255,255,255,0.7)');
 
+            nodeUpdate.select('.collapse-badge')
+                .style('display', d => d._children ? 'inline' : 'none')
+                .attr('transform', `translate(45, ${-rectHeight/2 + 19})`);
+
+            nodeUpdate.select('.badge-text')
+                .text(d => d.data.descendantCount);
+
             nodeUpdate.each(function(d) {
                 const nodeGroup = d3.select(this);
                 const tagsContainer = nodeGroup.select('.tags-container');
@@ -469,7 +500,7 @@
                 tagsEnter.append('rect').attr('rx', 4);
                 tagsEnter.append('text').attr('class', 'tag-text');
 
-                let currentX = 0;
+                let currentX = rectWidth - 12;
 
                 tagsContainer.selectAll('.tag-group').each(function(tagValue) {
                     const group = d3.select(this);
@@ -479,20 +510,20 @@
                     const textWidth = textEl.node().getComputedTextLength();
                     const tagWidth = textWidth + 12;
 
-                    currentX -= tagWidth; // Position from right to left
+                    currentX -= tagWidth;
 
-                    group.attr('transform', `translate(${currentX}, 0)`);
+                    group.attr('transform', `translate(${currentX}, ${-rectHeight/2 + 18})`);
 
                     rectEl.attr('width', tagWidth)
                         .attr('height', 18)
                         .attr('y', -9)
                         .style('fill', tagColorMap.get(tagValue));
 
-                    textEl.attr('x', tagWidth / 2 - 20)
+                    textEl.attr('x', tagWidth / 2)
                           .attr('y', 0)
                           .attr('dy', '.35em');
 
-                    currentX -= 4; // Add spacing
+                    currentX -= 4;
                 });
             });
 
@@ -538,7 +569,6 @@
                 d._children = null;
             }
             update(d, root, treemap);
-            setTimeout(() => centerView(root), duration);
         }
 
         function isLeaf(d) {
@@ -591,15 +621,16 @@
                 const rootNode = data.length === 1 ? data[0] : { name: "Root", subnodes: data, isVirtual: true };
 
                 calculatePoints(rootNode);
+                precomputeDescendantCounts(rootNode);
                 extractAllTags(rootNode.subnodes || [rootNode]);
                 renderFilterControls();
 
-                d3.select(graphContainer).select("svg").remove();
+                d3.select(graphContainer).selectAll("svg, div:not(.zoom-controls)").remove();
                 initD3Graph(rootNode);
 
             } catch (e) {
                 errorMessage.textContent = `YAML Error: ${e.message}`;
-                d3.select(graphContainer).select("svg").remove();
+                d3.select(graphContainer).selectAll("svg, div:not(.zoom-controls)").remove();
             }
         }
 
@@ -679,7 +710,7 @@
             if (!d3G || !d3G.node()) return;
 
             const bounds = d3G.node().getBBox();
-            const parent = d3G.node().parentElement;
+            const parent = d3Svg.node();
             const fullWidth = parent.clientWidth;
             const fullHeight = parent.clientHeight;
             const width = bounds.width;
@@ -709,105 +740,60 @@
             if (d3Svg) d3Svg.transition().call(d3Zoom.scaleBy, 0.8);
         });
 
-        const initialYamlContent = `- name: Root
+        const initialYamlContent = `- name: Relationship enrichment
   points: 2
+  tags: [personal]
   subnodes:
-  - name: Relationship enrichments
-    points: 2
-    subnodes:
-    - name: Finish will
-      subnodes:
-        - name: Share will
-          subnodes:
-            - name: Write will
-              points: 3
-              tags: [sentimental]
+    - name: Finish with everyone
+      description: "- share with everyone"
+      tags: [social]
     - name: Wedding
       points: 5
-      subnodes:
-      - name: rings
-        points: 5
-        tags: [decision, sentimental]
-      - name: guests
-        points: 3
-        tags: [decision]
-      - name: venue
-        points: 3
-        tags: [decision]
-      - name: invites
-        points: 3
-      - name: planner
-        points: 4
-      - name: cake
-        points: 4
-        tags: [decision, sentimental]
-      - name: food
-        points: 4
-        tags: [decision]
-      - name: officiant
-        points: 2
-      - name: photographer
-        points: 2
-        tags: [decision, sentimental]
+      tags: [milestone]
+      description: >
+        - rings - guests - venue - invites - planner - cake
+        - food - officiant - photographer
     - name: Have kids
+      tags: [family]
       subnodes:
-      - name: Move
-        points: 3
-        subnodes:
-          - name: Sell current house
-            subnodes:
-              - name: Fix current house
-                subnodes:
-                - name: Fix shower
-                  points: 8
-                  tags: [decision]
-                - name: Fix sprinkler
-                  points: 4
-                - name: Fix backdoor
-                  points: 6
-                - name: Fix mirrors
-                  points: 7
-              - name: List it
-                tags: [decision, sentimental]
-                subnodes:
-                - name: Pick realtor
-                  points: 5
-          - name: Find new house
-            points: 12
-            tags: [decision]
-          - name: Decide where to move
-            points: 15
-            tags: [decision, sentimental]
-      - name: Plant seed
-        points: 3
-        subnodes:
-        - name: plan time
-          points: 2
-        - name: find place
+        - name: Move
           points: 3
-      - name: Move for birth
-        points: 10
-      - name: Research/read books about it
-        points: 5
-      - name: Therapy
-        points: 7
-  - name: Personal enrichment
-    subnodes:
-    - name: Weight train
-      subnodes:
-      - name: build muscles
-        points: 7
+          tags: [logistics]
+          subnodes:
+            - name: Sell current house
+              subnodes:
+                - name: Fix current house
+                  description: "- shower - sprinkler - back door - mirrors"
+            - name: Find new house
+            - name: Decide where to move
+        - name: Plant seed
+        - name: Move for birth
+        - name: schedule time
+    - name: Therapy
+      tags: [health]
+- name: Personal enrichment
+  points: 1
+  tags: [personal]
+  subnodes:
+    - name: Take health srs
+      tags: [health]
     - name: Learn basic medical
+      tags: [skill]
     - name: Read more books
+      tags: [skill]
     - name: Learn piano
+      tags: [skill]
     - name: Travel more
+      tags: [leisure]
       subnodes:
-      - name: See northern lights
-      - name: Ski
-        subnodes:
-          - name: buy plane tickets
-          - name: schedule lessons
-      - name: Dive`;
+        - name: See northern lights
+        - name: Ski
+          subnodes:
+            - name: buy plane tickets
+            - name: schedule lessons
+        - name: Dive
+    - name: Weight train
+      tags: [health]`;
 
         yamlInput.addEventListener('input', (e) => processAndRender(e.target.value));
 
