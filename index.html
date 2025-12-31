@@ -3,831 +3,494 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dynamic Network Graph with Story Points</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap" rel="stylesheet">
-    <!-- js-yaml library -->
-    <script src="https://cdn.jsdelivr.net/npm/js-yaml@4.1.0/dist/js-yaml.min.js"></script>
-    <!-- D3.js library -->
-    <script src="https://d3js.org/d3.v5.min.js"></script>
+    <title>Memory Grid</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
-        :root {
-            --bg-color: #f0f4f8;
-            --leaf-node-bg: #D0FFFF;
-            --leaf-node-border: #a0c0c0;
-            --leaf-node-text: #333;
-            --line-color: #ccc;
-            --badge-bg: #4dd0e1;
-            --badge-text: #ffffff;
-            --textarea-bg: #ffffff;
-            --textarea-border: #dfe9f2;
-            --error-color: #ef5350;
-            --header-color: #ff8a65;
-            --text-color: #37474f;
-            --filter-bg: #ffffff;
-        }
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap');
 
         body {
             font-family: 'Inter', sans-serif;
-            background-color: var(--bg-color);
-            color: var(--text-color);
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            min-height: 100vh;
-            padding: 10px;
-            box-sizing: border-box;
-            overflow: hidden;
+            background-color: #f0f4f8;
+            touch-action: manipulation; /* Prevent double-tap zoom */
         }
 
-        .container {
-            display: flex;
-            width: 100%;
-            max-width: 1600px;
-            gap: 0;
-            height: calc(100vh - 20px);
-            position: relative;
-        }
-
-        /* Collapsible Input Pane */
-        .input-pane-wrapper {
-            display: flex;
-            flex-shrink: 0;
-            transition: all 0.5s ease;
-            position: relative;
-        }
-
-        .input-pane {
-            flex: 1;
-            display: flex;
-            flex-direction: column;
-            background-color: var(--textarea-bg);
-            border-radius: 12px;
-            padding: 15px;
-            border: 1px solid var(--textarea-border);
-            box-shadow: 0 4px 12px rgba(0,0,0,0.05);
-            width: 350px;
-            overflow: hidden;
-            transition: all 0.5s ease;
-        }
-
-        .input-pane-wrapper.collapsed .input-pane {
-            width: 0;
-            padding: 0;
-            border: 0;
-        }
-
-        #yaml-toggle {
-            position: absolute;
-            top: 50%;
-            right: -20px;
-            transform: translateY(-50%);
-            width: 20px;
-            height: 60px;
-            background-color: var(--filter-bg);
-            border: 1px solid var(--textarea-border);
-            border-left: none;
-            border-radius: 0 8px 8px 0;
+        .tile {
+            transition: all 0.2s ease-in-out;
             cursor: pointer;
-            z-index: 20;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-
-        #yaml-toggle::before {
-            content: '◀';
-            font-size: 14px;
-            color: var(--text-color);
-            transition: transform 0.5s ease;
-        }
-
-        .input-pane-wrapper.collapsed #yaml-toggle::before {
-            transform: rotate(180deg);
-        }
-
-        .input-pane h2 {
-            margin-top: 0;
-            font-size: 1.1rem;
-            color: var(--header-color);
-            border-bottom: 1px solid var(--textarea-border);
-            padding-bottom: 10px;
-            white-space: nowrap;
-        }
-
-        #yaml-input {
-            width: 100%;
-            height: 100%;
-            background-color: transparent;
-            border: none;
-            color: var(--text-color);
-            font-family: 'Courier New', Courier, monospace;
-            font-size: 14px;
-            resize: none;
-            outline: none;
-        }
-
-        #error-message {
-            color: var(--error-color);
-            margin-top: 10px;
-            font-size: 0.9rem;
-            min-height: 1em;
-            white-space: pre-wrap;
-        }
-
-        .display-pane {
-            flex: 1;
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
-            margin-left: 20px;
-            transition: margin-left 0.5s ease;
-        }
-
-        .input-pane-wrapper.collapsed + .display-pane {
-            margin-left: 0;
-        }
-
-        .filter-container {
-            position: relative;
-            background: var(--filter-bg);
             border-radius: 8px;
-            padding: 10px 15px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.06);
-            border: 1px solid var(--textarea-border);
-            flex-shrink: 0;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            position: relative;
+            overflow: hidden;
         }
 
-        .filter-button { cursor: pointer; font-weight: 500; }
-        .filter-dropdown {
-            display: none; position: absolute; top: 100%; left: 0;
-            background: var(--filter-bg); border-radius: 8px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.1); padding: 10px;
-            margin-top: 5px; z-index: 100; min-width: 200px;
-        }
-        .filter-dropdown.show { display: block; }
-        .filter-dropdown ul {
-            list-style: none; padding: 0; margin: 0;
-            max-height: 250px; /* Added max-height */
-            overflow-y: auto; /* Added overflow for scrolling */
-        }
-        .filter-dropdown li { padding: 5px 10px; display: flex; align-items: center; border-radius: 4px; cursor: pointer; }
-        .filter-dropdown li label { margin-left: 8px; cursor: pointer; flex-grow: 1; }
-
-        .graph-pane {
-            flex-grow: 1; overflow: hidden; background-color: var(--bg-color);
-            border-radius: 12px; border: 1px solid var(--textarea-border);
-            cursor: grab; user-select: none;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.05); position: relative;
-        }
-        .graph-pane.panning { cursor: grabbing; }
-
-        .zoom-controls {
-            position: absolute; bottom: 15px; right: 15px; z-index: 10;
-            display: flex; flex-direction: column; gap: 5px;
-            pointer-events: all;
-        }
-        .zoom-controls button {
-            width: 32px; height: 32px; font-size: 18px; font-weight: bold;
-            border-radius: 50%; border: 1px solid var(--textarea-border);
-            background-color: var(--filter-bg); color: var(--text-color); cursor: pointer;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.1); transition: background-color 0.2s;
-        }
-        .zoom-controls button:hover { background-color: #e9e9e9; }
-
-        /* --- D3 Graph Styling --- */
-        .node rect {
-            stroke-width: 2px;
-            transition: all 0.4s ease;
-        }
-        .node text, .node tspan {
-            font-family: 'Inter', sans-serif;
-            pointer-events: none;
-            text-anchor: start;
-        }
-        .link {
-            fill: none;
-            stroke: var(--line-color);
-            stroke-width: 2px;
+        .tile:active {
+            transform: scale(0.95);
         }
 
-        /* Highlighting and Dimming */
-        .node.dimmed { opacity: 0.3; }
-        .node.highlighted rect {
-            stroke: var(--header-color);
-            stroke-width: 4px;
+        /* Tile States */
+        .tile-default {
+            background-color: #cbd5e1; /* slate-300 */
+        }
+        
+        .tile-default:hover {
+            background-color: #94a3b8; /* slate-400 */
         }
 
-        .tag-text, .badge-text {
-            font-size: 10px;
-            font-weight: 500;
-            fill: #fff;
-            text-anchor: middle;
+        .tile-pattern {
+            background-color: #0ea5e9; /* sky-500 */
+            transform: scale(1.05);
+            box-shadow: 0 0 15px rgba(14, 165, 233, 0.5);
         }
 
-        @media (max-width: 768px) {
-            .container { flex-direction: column; height: auto; }
-            .input-pane-wrapper {
-                width: 100%;
-                margin-bottom: 20px;
-            }
-            .display-pane {
-                margin-left: 0;
-            }
-            .input-pane { width: 100%; }
+        .tile-correct {
+            background-color: #22c55e; /* green-500 */
+            animation: pop 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+
+        .tile-wrong {
+            background-color: #ef4444; /* red-500 */
+            animation: shake 0.4s cubic-bezier(.36,.07,.19,.97) both;
+        }
+
+        .tile-missed {
+            background-color: #f59e0b; /* amber-500 */
+            opacity: 0.7;
+        }
+
+        /* Animations */
+        @keyframes pop {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.2); }
+            100% { transform: scale(1); }
+        }
+
+        @keyframes shake {
+            10%, 90% { transform: translate3d(-1px, 0, 0); }
+            20%, 80% { transform: translate3d(2px, 0, 0); }
+            30%, 50%, 70% { transform: translate3d(-4px, 0, 0); }
+            40%, 60% { transform: translate3d(4px, 0, 0); }
+        }
+
+        /* Grid Container Dynamic Resizing */
+        #game-board {
+            display: grid;
+            gap: 0.5rem; /* Gap-2 equivalent */
+            margin: 0 auto;
+            max-width: 90vw;
+            max-height: 60vh;
+            /* Aspect ratio handling via JS usually, but CSS grid handles flow well */
+        }
+
+        /* Overlay */
+        .overlay {
+            backdrop-filter: blur(4px);
+            background-color: rgba(255, 255, 255, 0.8);
         }
     </style>
 </head>
-<body>
+<body class="h-screen w-screen flex flex-col overflow-hidden text-slate-800 selection:bg-sky-200">
 
-    <div class="container">
-        <div class="input-pane-wrapper collapsed" id="yaml-pane-wrapper">
-             <div class="input-pane" id="yaml-pane">
-                <h2>YAML Configuration</h2>
-                <textarea id="yaml-input"></textarea>
-                <div id="error-message"></div>
+    <!-- Header / HUD -->
+    <header class="flex-none p-4 md:p-6 flex justify-between items-center bg-white shadow-sm z-10">
+        <div class="flex items-center gap-3">
+            <div class="bg-sky-500 text-white p-2 rounded-lg">
+                <i class="fa-solid fa-brain text-xl"></i>
             </div>
-            <button id="yaml-toggle"></button>
+            <div>
+                <h1 class="font-bold text-xl leading-none">Memory Grid</h1>
+                <p class="text-xs text-slate-500 font-semibold">BRAIN TRAINING</p>
+            </div>
         </div>
-        <div class="display-pane">
-            <div id="filter-container-wrapper"></div>
-            <div class="graph-pane" id="graph-container">
-                 <div class="zoom-controls">
-                    <button id="zoom-in">+</button>
-                    <button id="zoom-out">-</button>
+
+        <div class="flex gap-6 text-sm md:text-base">
+            <div class="text-center">
+                <p class="text-slate-400 text-xs font-bold uppercase tracking-wider">Score</p>
+                <p id="score-display" class="font-bold text-xl tabular-nums">0</p>
+            </div>
+            <div class="text-center">
+                <p class="text-slate-400 text-xs font-bold uppercase tracking-wider">Level</p>
+                <p id="level-display" class="font-bold text-xl tabular-nums">1</p>
+            </div>
+            <div class="text-center hidden md:block">
+                <p class="text-slate-400 text-xs font-bold uppercase tracking-wider">Tiles</p>
+                <p id="tiles-count-display" class="font-bold text-xl tabular-nums">3</p>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Game Area -->
+    <main class="flex-grow flex items-center justify-center relative p-4 bg-slate-100">
+        
+        <!-- The Grid -->
+        <div id="game-board-container" class="relative">
+            <div id="game-board">
+                <!-- Tiles generated by JS -->
+            </div>
+        </div>
+
+        <!-- Start / Game Over Overlay -->
+        <div id="overlay" class="absolute inset-0 z-20 flex flex-col items-center justify-center overlay transition-opacity duration-300">
+            <div class="bg-white p-8 rounded-2xl shadow-2xl text-center max-w-sm w-full mx-4 border border-slate-100">
+                <div class="mb-6 inline-flex items-center justify-center w-20 h-20 rounded-full bg-sky-100 text-sky-600 mb-4">
+                    <i id="overlay-icon" class="fa-solid fa-play text-3xl"></i>
                 </div>
+                
+                <h2 id="overlay-title" class="text-2xl font-black mb-2 text-slate-800">Ready?</h2>
+                <p id="overlay-message" class="text-slate-600 mb-8 leading-relaxed">Memorize the pattern of blue tiles, then tap them when they disappear.</p>
+                
+                <button id="action-btn" class="w-full bg-sky-600 hover:bg-sky-700 text-white font-bold py-4 px-6 rounded-xl transition-transform hover:-translate-y-1 active:translate-y-0 shadow-lg shadow-sky-200">
+                    Start Game
+                </button>
             </div>
         </div>
+
+        <!-- Floating Feedback Toast -->
+        <div id="feedback" class="absolute top-4 left-1/2 transform -translate-x-1/2 bg-slate-800 text-white px-6 py-2 rounded-full text-sm font-semibold opacity-0 transition-opacity duration-300 pointer-events-none">
+            Perfect!
+        </div>
+    </main>
+
+    <!-- Progress Bar (Timer logic could be added here, currently just decorative or strictly level progress) -->
+    <div class="h-2 bg-slate-200 w-full">
+        <div id="progress-bar" class="h-full bg-sky-500 transition-all duration-500" style="width: 0%"></div>
     </div>
 
     <script>
-        // DOM elements
-        const yamlInput = document.getElementById('yaml-input');
-        const graphContainer = document.getElementById('graph-container');
-        const errorMessage = document.getElementById('error-message');
-        const filterWrapper = document.getElementById('filter-container-wrapper');
-        const yamlPaneWrapper = document.getElementById('yaml-pane-wrapper');
-        const yamlToggle = document.getElementById('yaml-toggle');
+        /**
+         * Game Configuration and State
+         */
+        const CONFIG = {
+            baseGridSize: 3,
+            startTiles: 3,
+            patternShowTime: 1500, // ms
+            postRoundDelay: 1000, // ms
+            scorePerTile: 100,
+            scoreMultiplier: 1.5 // Multiplier for higher levels
+        };
 
-        // State
-        let allTags = new Set();
-        let tagColorMap = new Map();
-        const tagColorPalette = [
-            '#f94144', '#f3722c', '#f8961e', '#f9844a', '#f9c74f',
-            '#90be6d', '#43aa8b', '#4d908e', '#577590', '#277da1'
-        ];
-        let parentPointValues = [];
+        const STATE = {
+            level: 1,
+            score: 0,
+            gridSize: 3, // 3x3
+            numTiles: 3,
+            pattern: [], // Array of indices
+            userPattern: [],
+            isInputActive: false,
+            isPlaying: false
+        };
 
-        // D3 State
-        let d3Zoom, d3Svg, d3G;
-        let i = 0;
-        const duration = 750;
-        const rectHeight = 100, rectWidth = 160;
+        // DOM Elements
+        const boardEl = document.getElementById('game-board');
+        const overlayEl = document.getElementById('overlay');
+        const actionBtn = document.getElementById('action-btn');
+        const scoreDisplay = document.getElementById('score-display');
+        const levelDisplay = document.getElementById('level-display');
+        const tilesCountDisplay = document.getElementById('tiles-count-display');
+        const overlayTitle = document.getElementById('overlay-title');
+        const overlayMessage = document.getElementById('overlay-message');
+        const overlayIcon = document.getElementById('overlay-icon');
+        const progressBar = document.getElementById('progress-bar');
+        const feedbackEl = document.getElementById('feedback');
 
-        // --- Data Parsing ---
+        // Audio Context (Simple synthesized beeps)
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        const audioCtx = new AudioContext();
 
-        function calculatePoints(node) {
-            const hasSubnodes = node.subnodes && node.subnodes.length > 0;
-            if (hasSubnodes) {
-                let childrenPoints = 0;
-                node.subnodes.forEach(child => {
-                     childrenPoints += calculatePoints(child);
-                });
+        function playSound(type) {
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            
+            const oscillator = audioCtx.createOscillator();
+            const gainNode = audioCtx.createGain();
+            
+            oscillator.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+            
+            if (type === 'flip') {
+                oscillator.type = 'sine';
+                oscillator.frequency.setValueAtTime(400, audioCtx.currentTime);
+                oscillator.frequency.exponentialRampToValueAtTime(600, audioCtx.currentTime + 0.1);
+                gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.1);
+                oscillator.start();
+                oscillator.stop(audioCtx.currentTime + 0.1);
+            } else if (type === 'correct') {
+                oscillator.type = 'sine';
+                oscillator.frequency.setValueAtTime(600, audioCtx.currentTime);
+                oscillator.frequency.exponentialRampToValueAtTime(1200, audioCtx.currentTime + 0.15);
+                gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.15);
+                oscillator.start();
+                oscillator.stop(audioCtx.currentTime + 0.15);
+            } else if (type === 'wrong') {
+                oscillator.type = 'sawtooth';
+                oscillator.frequency.setValueAtTime(200, audioCtx.currentTime);
+                oscillator.frequency.linearRampToValueAtTime(100, audioCtx.currentTime + 0.3);
+                gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.3);
+                oscillator.start();
+                oscillator.stop(audioCtx.currentTime + 0.3);
+            }
+        }
 
-                const selfPoints = (node.isVirtual) ? 0 : (typeof node.points === 'number' ? node.points : 1);
-                node.points = selfPoints + childrenPoints;
-                parentPointValues.push(node.points);
+        /**
+         * Game Logic
+         */
+
+        function initGame() {
+            STATE.level = 1;
+            STATE.score = 0;
+            STATE.gridSize = CONFIG.baseGridSize;
+            STATE.numTiles = CONFIG.startTiles;
+            STATE.isPlaying = true;
+            updateHUD();
+            startLevel();
+            
+            // Hide overlay
+            overlayEl.classList.add('opacity-0', 'pointer-events-none');
+        }
+
+        function calculateDifficulty() {
+            // Logic to scale difficulty
+            // Every 3 levels, increase grid size
+            // Every level, increase tiles (reset when grid grows)
+            
+            // Simple Progression Algorithm:
+            // Lvl 1: 3x3, 3 tiles
+            // Lvl 2: 3x3, 4 tiles
+            // Lvl 3: 4x4, 4 tiles
+            // Lvl 4: 4x4, 5 tiles
+            // Lvl 5: 4x4, 6 tiles
+            // Lvl 6: 5x5, 6 tiles
+            // ...
+            
+            if (STATE.level === 1) {
+                STATE.gridSize = 3;
+                STATE.numTiles = 3;
             } else {
-                node.points = typeof node.points === 'number' ? node.points : 1;
-            }
-            return node.points;
-        }
-
-        function precomputeDescendantCounts(node) {
-            if (!node.subnodes || node.subnodes.length === 0) {
-                node.descendantCount = 0;
-                return 0;
-            }
-            let count = node.subnodes.length;
-            node.subnodes.forEach(child => {
-                count += precomputeDescendantCounts(child);
-            });
-            node.descendantCount = count;
-            return count;
-        }
-
-        function extractAllTags(nodes) {
-            if (!nodes) return;
-            nodes.forEach(node => {
-                if (node.tags && Array.isArray(node.tags)) {
-                    node.tags.forEach(tag => {
-                        if (!tagColorMap.has(tag)) {
-                            tagColorMap.set(tag, tagColorPalette[tagColorMap.size % tagColorPalette.length]);
-                        }
-                        allTags.add(tag);
-                    });
+                // Just a rough curve
+                STATE.numTiles++;
+                
+                // If tiles cover more than 40% of grid, expand grid
+                const totalCells = STATE.gridSize * STATE.gridSize;
+                if (STATE.numTiles > totalCells * 0.45) {
+                    STATE.gridSize++;
+                    // Slightly reduce tiles when grid expands to give a breather, but keep it challenging
+                    // Or keep tiles same, but bigger space makes it harder anyway.
                 }
-                extractAllTags(node.subnodes);
-            });
+                
+                // Cap Grid Size at 6x6 for mobile usability, maybe 7x7 desktop
+                if (STATE.gridSize > 6) STATE.gridSize = 6;
+            }
         }
 
-        // --- D3 Rendering ---
-
-        function initD3Graph(treeData) {
-            d3Zoom = d3.zoom().scaleExtent([0.2, 3]).on('zoom', () => {
-                if (d3G) {
-                    d3G.attr('transform', d3.event.transform);
-                }
-            });
-
-            d3Svg = d3.select(graphContainer).append("svg")
-                .attr("width", "100%")
-                .attr("height", "100%")
-                .call(d3Zoom);
-
-            d3G = d3Svg.append("g");
-
-            const treemap = d3.tree();
-            let root = d3.hierarchy(treeData, d => d.subnodes);
-            root.x0 = graphContainer.clientHeight / 2;
-            root.y0 = 0;
-
-            update(root, root, treemap);
-            centerView(root);
+        function startLevel() {
+            STATE.isInputActive = false;
+            STATE.userPattern = [];
+            STATE.pattern = [];
+            
+            if (STATE.level > 1) calculateDifficulty();
+            
+            updateHUD();
+            renderGrid();
+            
+            // Short delay before showing pattern
+            setTimeout(() => {
+                generatePattern();
+                showPattern();
+            }, 500);
         }
 
-        function collapse(d) {
-          if (d.children) {
-            d._children = d.children;
-            d._children.forEach(collapse);
-            d.children = null;
-          }
+        function renderGrid() {
+            boardEl.innerHTML = '';
+            
+            // Set grid columns CSS
+            boardEl.style.gridTemplateColumns = `repeat(${STATE.gridSize}, 1fr)`;
+            
+            // Calculate tile size based on viewport to keep it square and fitting
+            // Base size calc: (Min(90vw, 60vh) - gaps) / gridSize
+            const viewportSize = Math.min(window.innerWidth * 0.9, window.innerHeight * 0.6);
+            const gapSize = 8 * (STATE.gridSize - 1); // 0.5rem = 8px
+            const tileSize = Math.floor((viewportSize - gapSize) / STATE.gridSize);
+            
+            const totalCells = STATE.gridSize * STATE.gridSize;
+
+            for (let i = 0; i < totalCells; i++) {
+                const tile = document.createElement('div');
+                tile.className = 'tile tile-default';
+                tile.style.width = `${tileSize}px`;
+                tile.style.height = `${tileSize}px`;
+                tile.dataset.index = i;
+                tile.addEventListener('click', () => handleTileClick(i));
+                
+                // prevent drag
+                tile.ondragstart = () => false;
+                
+                boardEl.appendChild(tile);
+            }
         }
 
-        function wrap(text, width) {
-            text.each(function() {
-                var text = d3.select(this),
-                    words = (text.text() || "").split(/\s+/).reverse(),
-                    word,
-                    line = [],
-                    lineNumber = 0,
-                    lineHeight = 1.1,
-                    x = text.attr("x"),
-                    y = text.attr("y"),
-                    dy = text.attr("dy") ? parseFloat(text.attr("dy")) : 0,
-                    tspan = text.text(null).append("tspan").attr("x", x).attr("y", y).attr("dy", dy + "em");
+        function generatePattern() {
+            const totalCells = STATE.gridSize * STATE.gridSize;
+            const indices = Array.from({length: totalCells}, (_, i) => i);
+            
+            // Fisher-Yates Shuffle
+            for (let i = indices.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [indices[i], indices[j]] = [indices[j], indices[i]];
+            }
+            
+            STATE.pattern = indices.slice(0, STATE.numTiles);
+        }
 
-                while (word = words.pop()) {
-                    line.push(word);
-                    tspan.text(line.join(" "));
-                    if (tspan.node().getComputedTextLength() > width) {
-                        line.pop();
-                        tspan.text(line.join(" "));
-                        line = [word];
-                        tspan = text.append("tspan").attr("x", x).attr("y", y).attr("dy", ++lineNumber * lineHeight + dy + "em").text(word);
-                    }
+        function showPattern() {
+            const tiles = document.querySelectorAll('.tile');
+            
+            // Reveal
+            STATE.pattern.forEach(index => {
+                const tile = tiles[index];
+                if(tile) {
+                    tile.classList.remove('tile-default');
+                    tile.classList.add('tile-pattern');
                 }
             });
-        }
-
-        function update(source, root, treemap) {
-            const visibleNodes = root.descendants();
-            treemap.size([visibleNodes.length * (rectHeight + 20), graphContainer.clientWidth]);
-
-            const treeData = treemap(root);
-            const nodes = treeData.descendants();
-            const links = treeData.descendants().slice(1);
-
-            nodes.forEach(d => { d.y = d.depth * (rectWidth + 80) });
-
-            const node = d3G.selectAll('g.node')
-                .data(nodes, d => d.id || (d.id = ++i));
-
-            const nodeEnter = node.enter().append('g')
-                .attr('class', 'node')
-                .attr('transform', `translate(${source.y0},${source.x0})`)
-                .on('click', (d) => click(d, root, treemap));
-
-            nodeEnter.append('rect')
-                .attr('class', 'node-rect')
-                .attr('width', rectWidth)
-                .attr('height', rectHeight)
-                .attr('x', 0)
-                .attr('y', -rectHeight/2)
-                .attr('rx', 10);
-
-            nodeEnter.append('text')
-                .attr("class", "points-text")
-                .attr("x", 12)
-                .attr("y", -rectHeight/2 + 20);
-
-            nodeEnter.append('text')
-                .attr("class", "name-text")
-                .attr("x", 12)
-                .attr("y", -rectHeight/2 + 40)
-                .attr("dy", ".35em");
-
-            nodeEnter.append('text')
-                .attr("class", "desc-text")
-                .attr("x", 12)
-                .attr("y", -rectHeight/2 + 60)
-                .attr("dy", ".35em");
-
-            nodeEnter.append('g')
-                .attr('class', 'tags-container');
-
-            const badgeEnter = nodeEnter.append('g')
-                .attr('class', 'collapse-badge')
-                .style('display', 'none');
-
-            badgeEnter.append('circle')
-                .attr('r', 12)
-                .style('fill', 'var(--badge-bg)');
-
-            badgeEnter.append('text')
-                .attr('class', 'badge-text')
-                .attr('dy', '.35em');
-
-            const nodeUpdate = nodeEnter.merge(node);
-
-            nodeUpdate.transition().duration(duration)
-                .attr('transform', d => `translate(${d.y},${d.x})`);
-
-            nodeUpdate.select('.points-text')
-                .text(d => d.data.points);
-
-            nodeUpdate.select('.name-text')
-                .text(d => d.data.name)
-                .call(wrap, rectWidth - 24);
-
-            nodeUpdate.select('.desc-text')
-                .text(d => d.data.description || "")
-                .call(wrap, rectWidth - 24);
-
-            nodeUpdate.select('rect.node-rect')
-                .style("fill", d => getNodeColor(d))
-                .style("stroke", d => {
-                    const fillColor = getNodeColor(d);
-                    if (fillColor && fillColor.startsWith('#')) return darkenColor(fillColor, 15);
-                    return 'var(--leaf-node-border)';
-                });
-
-            nodeUpdate.selectAll('.name-text, .desc-text')
-                .style("fill", d => isLeaf(d) ? 'var(--leaf-node-text)' : '#fff');
-
-            nodeUpdate.select('.points-text')
-                .style("fill", d => isLeaf(d) ? 'rgba(0,0,0,0.4)' : 'rgba(255,255,255,0.7)');
-
-            nodeUpdate.select('.collapse-badge')
-                .style('display', d => d._children ? 'inline' : 'none')
-                .attr('transform', `translate(45, ${-rectHeight/2 + 19})`);
-
-            nodeUpdate.select('.badge-text')
-                .text(d => d.data.descendantCount);
-
-            nodeUpdate.each(function(d) {
-                const nodeGroup = d3.select(this);
-                const tagsContainer = nodeGroup.select('.tags-container');
-                const tagData = d.data.tags || [];
-
-                const tags = tagsContainer.selectAll('.tag-group').data(tagData, tag => tag);
-
-                tags.exit().remove();
-
-                const tagsEnter = tags.enter().append('g').attr('class', 'tag-group');
-
-                tagsEnter.append('rect').attr('rx', 4);
-                tagsEnter.append('text').attr('class', 'tag-text');
-
-                let currentX = rectWidth - 12;
-
-                tagsContainer.selectAll('.tag-group').each(function(tagValue) {
-                    const group = d3.select(this);
-                    const textEl = group.select('text').text(tagValue);
-                    const rectEl = group.select('rect');
-
-                    const textWidth = textEl.node().getComputedTextLength();
-                    const tagWidth = textWidth + 12;
-
-                    currentX -= tagWidth;
-
-                    group.attr('transform', `translate(${currentX}, ${-rectHeight/2 + 18})`);
-
-                    rectEl.attr('width', tagWidth)
-                        .attr('height', 18)
-                        .attr('y', -9)
-                        .style('fill', tagColorMap.get(tagValue));
-
-                    textEl.attr('x', tagWidth / 2)
-                          .attr('y', 0)
-                          .attr('dy', '.35em');
-
-                    currentX -= 4;
-                });
-            });
-
-            const nodeExit = node.exit().transition().duration(duration)
-                .attr('transform', `translate(${source.y},${source.x})`).remove();
-
-            nodeExit.select('rect').style('opacity', 1e-6);
-            nodeExit.select('text').style('fill-opacity', 1e-6);
-
-            const link = d3G.selectAll('path.link').data(links, d => d.id);
-
-            const linkEnter = link.enter().insert('path', "g")
-                .attr("class", "link")
-                .attr('d', () => {
-                    const o = {x: source.x0, y: source.y0};
-                    return diagonal(o, o);
-                });
-
-            const linkUpdate = linkEnter.merge(link);
-            linkUpdate.transition().duration(duration)
-                .attr('d', d => diagonal(d, d.parent));
-
-            link.exit().transition().duration(duration)
-                .attr('d', () => { const o = {x: source.x, y: source.y}; return diagonal(o, o); })
-                .remove();
-
-            nodes.forEach(d => { d.x0 = d.x; d.y0 = d.y; });
-
-            function diagonal(s, d) {
-                return `M ${s.y + rectWidth} ${s.x}
-                        C ${(s.y + d.y + rectWidth) / 2} ${s.x},
-                          ${(s.y + d.y + rectWidth) / 2} ${d.x},
-                          ${d.y} ${d.x}`;
-            }
-        }
-
-        function click(d, root, treemap) {
-            if (d.children) {
-                d._children = d.children;
-                d.children = null;
-            } else {
-                d.children = d._children;
-                d._children = null;
-            }
-            update(d, root, treemap);
-        }
-
-        function isLeaf(d) {
-            return !d.children && !d._children;
-        }
-
-        function getNodeColor(d) {
-            if (isLeaf(d)) return 'var(--leaf-node-bg)';
-
-            const pointColorPalette = ['#006B3D', '#639754', '#7BB662', '#FFD301', '#E03C32', '#D61F1F'];
-            if (parentPointValues.length === 0) return pointColorPalette[0];
-
-            const minPoints = Math.min(...parentPointValues);
-            const maxPoints = Math.max(...parentPointValues);
-            const range = maxPoints - minPoints;
-
-            if (range === 0) return pointColorPalette[0];
-
-            const percent = (d.data.points - minPoints) / range;
-            const colorIndex = Math.round(percent * (pointColorPalette.length - 1));
-
-            if (isNaN(colorIndex)) return pointColorPalette[0];
-            return pointColorPalette[colorIndex];
-        }
-
-        function darkenColor(hex, percent) {
-            if (!hex || !hex.startsWith('#')) return '#cccccc';
-            let r = parseInt(hex.substring(1, 3), 16);
-            let g = parseInt(hex.substring(3, 5), 16);
-            let b = parseInt(hex.substring(5, 7), 16);
-            r = parseInt(r * (100 - percent) / 100);
-            g = parseInt(g * (100 - percent) / 100);
-            b = parseInt(b * (100 - percent) / 100);
-            r = (r < 255) ? r : 255;
-            g = (g < 255) ? g : 255;
-            b = (b < 255) ? b : 255;
-            return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
-        }
-
-        function processAndRender(yamlString) {
-            errorMessage.textContent = '';
-            parentPointValues = [];
-            allTags.clear();
-            tagColorMap.clear();
-
-            try {
-                let data = jsyaml.load(yamlString);
-                if (!Array.isArray(data)) throw new Error("YAML root must be an array of nodes.");
-
-                const rootNode = data.length === 1 ? data[0] : { name: "Root", subnodes: data, isVirtual: true };
-
-                calculatePoints(rootNode);
-                precomputeDescendantCounts(rootNode);
-                extractAllTags(rootNode.subnodes || [rootNode]);
-                renderFilterControls();
-
-                d3.select(graphContainer).selectAll("svg, div:not(.zoom-controls)").remove();
-                initD3Graph(rootNode);
-
-            } catch (e) {
-                errorMessage.textContent = `YAML Error: ${e.message}`;
-                d3.select(graphContainer).selectAll("svg, div:not(.zoom-controls)").remove();
-            }
-        }
-
-        function renderFilterControls() {
-            if (allTags.size === 0) {
-                filterWrapper.innerHTML = '';
-                return;
-            }
-
-            const radioButtons = Array.from(allTags).sort().map(tag => `
-                <li>
-                    <input type="radio" id="tag-filter-${tag}" name="tag-filter" value="${tag}">
-                    <label for="tag-filter-${tag}">${tag}</label>
-                </li>
-            `).join('');
-
-            filterWrapper.innerHTML = `
-                <div class="filter-container">
-                    <div class="filter-button">Filter by Tag ▾</div>
-                    <div class="filter-dropdown">
-                        <ul>
-                            <li>
-                                <input type="radio" id="tag-filter-all" name="tag-filter" value="all" checked>
-                                <label for="tag-filter-all">Show All</label>
-                            </li>
-                            ${radioButtons}
-                        </ul>
-                    </div>
-                </div>
-            `;
-
-            const filterButton = filterWrapper.querySelector('.filter-button');
-            const dropdown = filterWrapper.querySelector('.filter-dropdown');
-            filterButton.addEventListener('click', () => dropdown.classList.toggle('show'));
-
-            dropdown.querySelectorAll('input[type="radio"]').forEach(radio => {
-                radio.addEventListener('change', applyFilter);
-            });
-
-            document.addEventListener('click', (e) => {
-                if (!filterWrapper.contains(e.target)) {
-                    dropdown.classList.remove('show');
-                }
-            });
-        }
-
-        function applyFilter() {
-            const checkedFilter = filterWrapper.querySelector('input[name="tag-filter"]:checked');
-            if (!checkedFilter) return;
-
-            const filterValue = checkedFilter.value;
-            const allNodes = d3G.selectAll('g.node');
-
-            if (filterValue === 'all') {
-                allNodes.classed('highlighted', false).classed('dimmed', false);
-                return;
-            }
-
-            allNodes.each(function(d) {
-                const node = d3.select(this);
-                const nodeTags = d.data.tags || [];
-                const hasDirectMatch = nodeTags.includes(filterValue);
-
-                let hasDescendantMatch = false;
-                d.descendants().forEach(desc => {
-                    if ((desc.data.tags || []).includes(filterValue)) {
-                        hasDescendantMatch = true;
+            
+            playSound('flip');
+
+            // Hide after delay
+            setTimeout(() => {
+                STATE.pattern.forEach(index => {
+                    const tile = tiles[index];
+                    if(tile) {
+                        tile.classList.remove('tile-pattern');
+                        tile.classList.add('tile-default');
                     }
                 });
-
-                node.classed('highlighted', hasDirectMatch);
-                node.classed('dimmed', !hasDirectMatch && !hasDescendantMatch);
-            });
+                STATE.isInputActive = true;
+                showFeedback("Go!", "text-white");
+            }, CONFIG.patternShowTime); // Time to memorize
         }
 
-        function centerView(root) {
-            if (!d3G || !d3G.node()) return;
+        function handleTileClick(index) {
+            if (!STATE.isInputActive) return;
+            
+            // Ignore if already clicked (check class list for correct/wrong)
+            const tile = document.querySelectorAll('.tile')[index];
+            if (tile.classList.contains('tile-correct') || tile.classList.contains('tile-wrong')) return;
 
-            const bounds = d3G.node().getBBox();
-            const parent = d3Svg.node();
-            const fullWidth = parent.clientWidth;
-            const fullHeight = parent.clientHeight;
-            const width = bounds.width;
-            const height = bounds.height;
-            const midX = bounds.x + width / 2;
-            const midY = bounds.y + height / 2;
-
-            if (width === 0 || height === 0) return;
-
-            const scale = 0.85 / Math.max(width / fullWidth, height / fullHeight);
-            const translate = [fullWidth / 2 - scale * midX, fullHeight / 2 - scale * midY];
-
-            const transform = d3.zoomIdentity
-                .translate(translate[0], translate[1])
-                .scale(scale);
-
-            if (d3Svg) {
-                d3Svg.transition().duration(duration)
-                    .call(d3Zoom.transform, transform);
+            // Check correctness
+            if (STATE.pattern.includes(index)) {
+                // Correct
+                tile.classList.remove('tile-default');
+                tile.classList.add('tile-correct');
+                playSound('correct');
+                
+                STATE.userPattern.push(index);
+                
+                // Check if level complete
+                if (STATE.userPattern.length === STATE.pattern.length) {
+                    levelComplete();
+                }
+            } else {
+                // Wrong
+                tile.classList.remove('tile-default');
+                tile.classList.add('tile-wrong');
+                playSound('wrong');
+                
+                gameOver();
             }
         }
 
-        document.getElementById('zoom-in').addEventListener('click', () => {
-            if (d3Svg) d3Svg.transition().call(d3Zoom.scaleBy, 1.2);
-        });
-        document.getElementById('zoom-out').addEventListener('click', () => {
-            if (d3Svg) d3Svg.transition().call(d3Zoom.scaleBy, 0.8);
-        });
+        function levelComplete() {
+            STATE.isInputActive = false;
+            
+            // Score Calc
+            const levelBonus = STATE.level * 50;
+            const points = (STATE.numTiles * CONFIG.scorePerTile) + levelBonus;
+            STATE.score += points;
+            
+            showFeedback("Perfect!", "bg-green-500");
+            
+            STATE.level++;
+            updateHUD();
+            
+            setTimeout(startLevel, CONFIG.postRoundDelay);
+        }
 
-        const initialYamlContent = `- name: Relationship enrichment
-  points: 2
-  tags: [personal]
-  subnodes:
-    - name: Finish with everyone
-      description: "- share with everyone"
-      tags: [social]
-    - name: Wedding
-      points: 5
-      tags: [milestone]
-      description: >
-        - rings - guests - venue - invites - planner - cake
-        - food - officiant - photographer
-    - name: Have kids
-      tags: [family]
-      subnodes:
-        - name: Move
-          points: 3
-          tags: [logistics]
-          subnodes:
-            - name: Sell current house
-              subnodes:
-                - name: Fix current house
-                  description: "- shower - sprinkler - back door - mirrors"
-            - name: Find new house
-            - name: Decide where to move
-        - name: Plant seed
-        - name: Move for birth
-        - name: schedule time
-    - name: Therapy
-      tags: [health]
-- name: Personal enrichment
-  points: 1
-  tags: [personal]
-  subnodes:
-    - name: Take health srs
-      tags: [health]
-    - name: Learn basic medical
-      tags: [skill]
-    - name: Read more books
-      tags: [skill]
-    - name: Learn piano
-      tags: [skill]
-    - name: Travel more
-      tags: [leisure]
-      subnodes:
-        - name: See northern lights
-        - name: Ski
-          subnodes:
-            - name: buy plane tickets
-            - name: schedule lessons
-        - name: Dive
-    - name: Weight train
-      tags: [health]`;
+        function gameOver() {
+            STATE.isInputActive = false;
+            STATE.isPlaying = false;
+            
+            // Show missed tiles
+            const tiles = document.querySelectorAll('.tile');
+            STATE.pattern.forEach(index => {
+                const tile = tiles[index];
+                if (!tile.classList.contains('tile-correct')) {
+                    tile.classList.add('tile-missed');
+                }
+            });
 
-        yamlInput.addEventListener('input', (e) => processAndRender(e.target.value));
+            setTimeout(() => {
+                showOverlay('Game Over', `You reached Level ${STATE.level} with a score of ${STATE.score}.`, 'fa-rotate-right');
+            }, 1500);
+        }
 
-        window.addEventListener('load', () => {
-            yamlInput.value = initialYamlContent;
-            processAndRender(initialYamlContent);
-        });
+        function showOverlay(title, msg, iconClass) {
+            overlayTitle.innerText = title;
+            overlayMessage.innerText = msg;
+            overlayIcon.className = `fa-solid ${iconClass} text-3xl`;
+            actionBtn.innerText = title === 'Game Over' ? 'Try Again' : 'Start Game';
+            
+            overlayEl.classList.remove('opacity-0', 'pointer-events-none');
+        }
 
-        yamlToggle.addEventListener('click', () => {
-            yamlPaneWrapper.classList.toggle('collapsed');
-            yamlPaneWrapper.addEventListener('transitionend', () => {
-                 const rootSelection = d3.select('.node');
-                 if (rootSelection.empty()) return;
-                 const root = rootSelection.datum();
-                 if (root) {
-                    centerView(root);
-                 }
-            }, {once: true});
-        });
+        function updateHUD() {
+            scoreDisplay.innerText = STATE.score.toLocaleString();
+            levelDisplay.innerText = STATE.level;
+            tilesCountDisplay.innerText = STATE.numTiles;
+            
+            // Update progress bar (visual flair, fills based on tiles found in current level)
+            // But we don't track incremental progress in HUD easily, so maybe just level progress
+            // Let's make progress bar show difficulty roughly (tiles / total)
+            const percentage = (STATE.numTiles / (STATE.gridSize * STATE.gridSize)) * 100;
+            progressBar.style.width = `${percentage}%`;
+        }
+        
+        function showFeedback(text, colorClass) {
+            feedbackEl.innerText = text;
+            feedbackEl.className = `absolute top-4 left-1/2 transform -translate-x-1/2 px-6 py-2 rounded-full text-sm font-semibold transition-all duration-300 pointer-events-none shadow-lg ${colorClass || 'bg-slate-800 text-white'}`;
+            feedbackEl.style.opacity = '1';
+            feedbackEl.style.transform = 'translate(-50%, 0)';
+            
+            setTimeout(() => {
+                feedbackEl.style.opacity = '0';
+                feedbackEl.style.transform = 'translate(-50%, -10px)';
+            }, 800);
+        }
 
+        // Event Listeners
+        actionBtn.addEventListener('click', initGame);
+
+        // Resize observer to handle window resizing dynamically
         window.addEventListener('resize', () => {
-            if (d3Svg) {
-                d3Svg.attr("width", graphContainer.clientWidth)
-                     .attr("height", graphContainer.clientHeight);
-            }
-            const rootSelection = d3.select('.node');
-            if (rootSelection.empty()) return;
-
-            const root = rootSelection.datum();
-            if (root) {
-                centerView(root);
+            if (STATE.isPlaying) {
+                renderGrid();
+                // We need to restore the state of tiles (correct, patterns etc)
+                // This is complex, for a simple clone, we might just let the user finish or restart
+                // For now, re-rendering clears the visual state, which is bad during a game.
+                // A better approach for resize is just updating CSS vars, but since we calc px in JS:
+                // Let's actually NOT re-render the DOM, just update the width/height of existing tiles.
+                const viewportSize = Math.min(window.innerWidth * 0.9, window.innerHeight * 0.6);
+                const gapSize = 8 * (STATE.gridSize - 1);
+                const tileSize = Math.floor((viewportSize - gapSize) / STATE.gridSize);
+                const tiles = document.querySelectorAll('.tile');
+                tiles.forEach(t => {
+                    t.style.width = `${tileSize}px`;
+                    t.style.height = `${tileSize}px`;
+                });
             }
         });
-    </script>
 
+    </script>
 </body>
 </html>
