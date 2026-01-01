@@ -384,12 +384,30 @@
                 }, CONFIG.animDuration + 100);
             }, CONFIG.animDuration + 100);
         }
-
+        
         function spawnCard() {
-            // Logic to ensure occasional matches (25% chance of forced match if pool large)
-            // But strict random is usually fine with small icon set.
-            // Let's bias slightly if we want, but random is standard.
-            const icon = CONFIG.icons[Math.floor(Math.random() * CONFIG.icons.length)];
+            // Logic to ensure matches ~50% of the time.
+            // The card we spawn NOW (Pos 0) will be compared next turn (when it moves to Pos 1/UR) 
+            // against the card currently at Pos 2/LR (which will move to Pos 3/LL).
+            
+            let icon;
+            const futureTarget = STATE.activeCards.find(c => c.posIndex === 2);
+
+            // 50% chance to force a match with the upcoming target
+            if (futureTarget && Math.random() < 0.5) {
+                icon = futureTarget.icon;
+            } else {
+                // Otherwise pick a random icon that is NOT the match (to ensure strict 50% rate)
+                let pool = CONFIG.icons;
+                if (futureTarget) {
+                    pool = pool.filter(i => i !== futureTarget.icon);
+                }
+                icon = pool[Math.floor(Math.random() * pool.length)];
+            }
+            
+            // Fallback safety
+            if (!icon) icon = CONFIG.icons[Math.floor(Math.random() * CONFIG.icons.length)];
+
             const cardEl = document.createElement('div');
             
             // Create DOM
