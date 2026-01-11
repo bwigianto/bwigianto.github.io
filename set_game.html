@@ -1,0 +1,545 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Set Match</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap');
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f8fafc;
+            touch-action: manipulation;
+            user-select: none;
+        }
+
+        /* Card Styles */
+        .card {
+            background-color: white;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            cursor: pointer;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            border: 2px solid transparent;
+            aspect-ratio: 3/2;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0.5rem;
+            position: relative;
+            z-index: 10; /* Ensure cards are clickable */
+        }
+
+        .card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+        }
+
+        .card.selected {
+            border-color: #3b82f6; /* Blue-500 */
+            background-color: #eff6ff; /* Blue-50 */
+            transform: scale(0.95);
+        }
+
+        /* Animations */
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            25% { transform: translateX(-4px); }
+            75% { transform: translateX(4px); }
+        }
+
+        .shake-anim {
+            animation: shake 0.3s ease-in-out;
+            border-color: #ef4444 !important; /* Red-500 */
+            background-color: #fef2f2 !important;
+        }
+
+        @keyframes popOut {
+            0% { transform: scale(1); opacity: 1; }
+            100% { transform: scale(0.5); opacity: 0; }
+        }
+
+        .matched-anim {
+            animation: popOut 0.3s ease-in forwards;
+        }
+
+        /* SVG Patterns */
+        svg { width: 100%; height: 100%; }
+        
+        /* Grid Layout */
+        #game-board {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 1rem;
+            max-width: 600px;
+            margin: 0 auto;
+            position: relative;
+            z-index: 1;
+        }
+
+        @media (min-width: 640px) {
+            #game-board {
+                gap: 1.5rem;
+            }
+        }
+    </style>
+</head>
+<body class="h-screen w-screen flex flex-col overflow-hidden text-slate-800 bg-slate-100">
+
+    <!-- Header / HUD -->
+    <header class="flex-none p-4 flex justify-between items-center bg-white shadow-sm z-20">
+        <div class="flex items-center gap-4">
+            <a href="index.html" class="flex items-center justify-center w-10 h-10 rounded-full hover:bg-slate-100 text-slate-400 hover:text-rose-600 transition-colors" title="Back to Menu">
+                <i class="fa-solid fa-house"></i>
+            </a>
+            <div class="flex items-center gap-3 pl-4 border-l border-slate-200">
+                <div class="bg-rose-500 text-white p-2 rounded-lg">
+                    <i class="fa-solid fa-clone text-xl"></i>
+                </div>
+                <div>
+                    <h1 class="font-bold text-xl leading-none">Set Match</h1>
+                    <p class="text-xs text-slate-500 font-semibold">PATTERN RECOGNITION</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="flex gap-8 text-sm md:text-base">
+            <div class="text-center">
+                <p class="text-slate-400 text-[10px] font-bold uppercase tracking-wider">Sets</p>
+                <p id="score-display" class="font-bold text-xl tabular-nums leading-none">0</p>
+            </div>
+            <div class="text-center">
+                <p class="text-slate-400 text-[10px] font-bold uppercase tracking-wider">Time</p>
+                <p id="time-display" class="font-bold text-xl tabular-nums leading-none">60s</p>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Game Area -->
+    <main class="flex-grow flex flex-col items-center justify-center relative p-4 overflow-y-auto">
+        
+        <div id="game-board">
+            <!-- Cards injected by JS -->
+        </div>
+
+        <!-- Start Overlay -->
+        <div id="overlay" class="absolute inset-0 z-50 flex flex-col items-center justify-center backdrop-blur-md bg-slate-900/80 text-white p-8">
+            <div class="mb-6 inline-flex items-center justify-center w-20 h-20 rounded-full bg-rose-500/20 text-rose-300 mb-4 ring-2 ring-rose-500/50">
+                <i class="fa-solid fa-layer-group text-3xl"></i>
+            </div>
+            
+            <h2 id="overlay-title" class="text-3xl font-black mb-2 text-white">Set Match</h2>
+            <div id="overlay-content" class="text-slate-300 mb-8 text-sm text-center max-w-sm">
+                <p class="mb-2">Find sets of 3 cards where each feature is either <strong>all the same</strong> or <strong>all different</strong>.</p>
+                <ul class="text-xs text-left list-disc pl-5 space-y-1 opacity-80">
+                    <li>Shape: Diamond, Oval, Squiggle</li>
+                    <li>Color: Red, Green, Purple</li>
+                    <li>Number: 1, 2, 3</li>
+                    <li>Shading: Solid, Striped, Open</li>
+                </ul>
+            </div>
+            
+            <button id="action-btn" class="w-full max-w-xs bg-rose-600 hover:bg-rose-500 text-white font-bold py-4 px-6 rounded-xl transition-all hover:scale-105 active:scale-95 shadow-lg shadow-rose-900/50">
+                Start Game
+            </button>
+        </div>
+
+        <!-- Feedback Toast -->
+        <div id="feedback" class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 pointer-events-none z-40 opacity-0 transition-all duration-300 font-black text-4xl drop-shadow-lg scale-50 whitespace-nowrap text-white">
+            SET FOUND!
+        </div>
+
+    </main>
+
+    <!-- Invisible SVG Defs for Patterns (Pointer events none to avoid blocking) -->
+    <svg width="0" height="0" class="absolute pointer-events-none" style="z-index: -1;">
+        <defs>
+            <!-- Striped Pattern -->
+            <pattern id="striped-red" width="4" height="4" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+                <line x1="0" y1="0" x2="0" y2="4" stroke="#ef4444" stroke-width="2" />
+            </pattern>
+            <pattern id="striped-green" width="4" height="4" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+                <line x1="0" y1="0" x2="0" y2="4" stroke="#22c55e" stroke-width="2" />
+            </pattern>
+            <pattern id="striped-purple" width="4" height="4" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+                <line x1="0" y1="0" x2="0" y2="4" stroke="#a855f7" stroke-width="2" />
+            </pattern>
+        </defs>
+    </svg>
+
+    <script>
+        // --- Constants & Enums ---
+        const COLORS = ['#ef4444', '#22c55e', '#a855f7']; // Red, Green, Purple
+        const SHAPES = ['diamond', 'oval', 'squiggle'];
+        const NUMBERS = [1, 2, 3];
+        const SHADINGS = ['solid', 'striped', 'open'];
+        const STRIPE_IDS = ['striped-red', 'striped-green', 'striped-purple'];
+
+        // --- Game State ---
+        let deck = [];
+        let board = []; // Array of Card Objects or null
+        let selectedIndices = [];
+        let score = 0;
+        let timeLeft = 60;
+        let timerInterval = null;
+        let isGameActive = false;
+
+        // --- DOM Elements ---
+        const boardEl = document.getElementById('game-board');
+        const scoreDisplay = document.getElementById('score-display');
+        const timeDisplay = document.getElementById('time-display');
+        const overlay = document.getElementById('overlay');
+        const overlayTitle = document.getElementById('overlay-title');
+        const overlayContent = document.getElementById('overlay-content');
+        const actionBtn = document.getElementById('action-btn');
+        const feedbackEl = document.getElementById('feedback');
+
+        // --- Audio ---
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        function playSound(type) {
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            const now = audioCtx.currentTime;
+
+            if (type === 'select') {
+                osc.frequency.setValueAtTime(400, now);
+                gain.gain.setValueAtTime(0.05, now);
+                gain.gain.linearRampToValueAtTime(0, now + 0.05);
+                osc.start(now);
+                osc.stop(now + 0.05);
+            } else if (type === 'match') {
+                osc.frequency.setValueAtTime(400, now);
+                osc.frequency.linearRampToValueAtTime(800, now + 0.1);
+                gain.gain.setValueAtTime(0.1, now);
+                gain.gain.linearRampToValueAtTime(0, now + 0.3);
+                osc.start(now);
+                osc.stop(now + 0.3);
+            } else if (type === 'error') {
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(150, now);
+                gain.gain.setValueAtTime(0.1, now);
+                gain.gain.linearRampToValueAtTime(0, now + 0.2);
+                osc.start(now);
+                osc.stop(now + 0.2);
+            } else if (type === 'end') {
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(300, now);
+                osc.frequency.linearRampToValueAtTime(100, now + 0.5);
+                gain.gain.setValueAtTime(0.2, now);
+                gain.gain.linearRampToValueAtTime(0, now + 0.5);
+                osc.start(now);
+                osc.stop(now + 0.5);
+            }
+        }
+
+        // --- Game Logic ---
+
+        class Card {
+            constructor(color, shape, number, shading) {
+                this.color = color;
+                this.shape = shape;
+                this.number = number;
+                this.shading = shading;
+                this.id = Math.random().toString(36);
+            }
+        }
+
+        function generateDeck() {
+            const newDeck = [];
+            for (let c = 0; c < 3; c++) {
+                for (let s = 0; s < 3; s++) {
+                    for (let n = 0; n < 3; n++) {
+                        for (let h = 0; h < 3; h++) {
+                            newDeck.push(new Card(c, s, n, h));
+                        }
+                    }
+                }
+            }
+            // Shuffle
+            for (let i = newDeck.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [newDeck[i], newDeck[j]] = [newDeck[j], newDeck[i]];
+            }
+            return newDeck;
+        }
+
+        function initGame() {
+            deck = generateDeck();
+            board = [];
+            score = 0;
+            timeLeft = 60;
+            selectedIndices = [];
+            
+            // Deal initial 12 cards
+            for (let i = 0; i < 12; i++) {
+                if (deck.length > 0) board.push(deck.pop());
+            }
+
+            // Ensure at least one set exists initially
+            while (!boardContainsSet(board) && deck.length > 0) {
+                // Add 3 more cards
+                for (let i = 0; i < 3; i++) {
+                    if (deck.length > 0) board.push(deck.pop());
+                }
+            }
+
+            renderBoard();
+            updateHUD();
+            startTimer();
+            isGameActive = true;
+            overlay.classList.add('hidden');
+        }
+
+        function isSet(c1, c2, c3) {
+            if (!c1 || !c2 || !c3) return false;
+            
+            const features = ['color', 'shape', 'number', 'shading'];
+            for (let f of features) {
+                const v1 = c1[f];
+                const v2 = c2[f];
+                const v3 = c3[f];
+                
+                // All same OR all different
+                const allSame = (v1 === v2 && v2 === v3);
+                const allDiff = (v1 !== v2 && v1 !== v3 && v2 !== v3);
+                
+                if (!allSame && !allDiff) return false;
+            }
+            return true;
+        }
+
+        function boardContainsSet(currentBoard) {
+            // Brute force check all combinations
+            for (let i = 0; i < currentBoard.length; i++) {
+                for (let j = i + 1; j < currentBoard.length; j++) {
+                    for (let k = j + 1; k < currentBoard.length; k++) {
+                        if (isSet(currentBoard[i], currentBoard[j], currentBoard[k])) {
+                            return true;
+                        }
+                    }
+                }
+            }
+            return false;
+        }
+
+        function handleCardClick(index) {
+            if (!isGameActive) return;
+            
+            const idxInSelection = selectedIndices.indexOf(index);
+
+            if (idxInSelection > -1) {
+                // Deselect
+                selectedIndices.splice(idxInSelection, 1);
+                renderSelection();
+                playSound('select');
+            } else {
+                // Select
+                if (selectedIndices.length < 3) {
+                    selectedIndices.push(index);
+                    renderSelection();
+                    playSound('select');
+                    
+                    if (selectedIndices.length === 3) {
+                        setTimeout(checkSelection, 100);
+                    }
+                }
+            }
+        }
+
+        function checkSelection() {
+            const [i1, i2, i3] = selectedIndices;
+            const c1 = board[i1];
+            const c2 = board[i2];
+            const c3 = board[i3];
+
+            if (isSet(c1, c2, c3)) {
+                // Found a set!
+                score++;
+                playSound('match');
+                showFeedback("SET FOUND!", "text-green-400");
+                
+                // Remove cards from board
+                const indicesToRemove = [i1, i2, i3].sort((a, b) => b - a);
+                
+                if (board.length > 12 || deck.length === 0) {
+                     indicesToRemove.forEach(idx => board.splice(idx, 1));
+                } else {
+                    indicesToRemove.forEach(idx => {
+                        if (deck.length > 0) {
+                            board[idx] = deck.pop();
+                        } else {
+                            board.splice(idx, 1); 
+                        }
+                    });
+                }
+
+                while (!boardContainsSet(board) && deck.length > 0) {
+                    for (let i = 0; i < 3; i++) {
+                        if (deck.length > 0) board.push(deck.pop());
+                    }
+                }
+
+                selectedIndices = [];
+                renderBoard();
+                updateHUD();
+
+            } else {
+                // Invalid set
+                playSound('error');
+                showFeedback("NOT A SET", "text-rose-400");
+                
+                selectedIndices.forEach(idx => {
+                    const el = document.getElementById(`card-${idx}`);
+                    if (el) el.classList.add('shake-anim');
+                });
+
+                setTimeout(() => {
+                    selectedIndices = [];
+                    const cards = document.querySelectorAll('.card');
+                    cards.forEach(c => c.classList.remove('shake-anim'));
+                    renderSelection();
+                }, 400);
+            }
+        }
+
+        // --- Rendering ---
+
+        function renderBoard() {
+            boardEl.innerHTML = '';
+            
+            board.forEach((card, index) => {
+                const el = document.createElement('div');
+                el.id = `card-${index}`;
+                el.className = 'card';
+                // Using addEventListener is slightly cleaner for event management
+                el.addEventListener('click', () => handleCardClick(index));
+                
+                // Render shapes
+                const shapeContent = renderShape(card);
+                const contentWrapper = document.createElement('div');
+                contentWrapper.className = 'flex flex-col gap-1 md:gap-2 items-center justify-center w-full h-full pointer-events-none'; // Added pointer-events-none
+                
+                for (let i = 0; i < NUMBERS[card.number]; i++) {
+                    const shapeWrapper = document.createElement('div');
+                    shapeWrapper.style.width = '100%';
+                    shapeWrapper.style.height = '30%'; 
+                    shapeWrapper.style.maxHeight = '40px';
+                    shapeWrapper.innerHTML = shapeContent;
+                    contentWrapper.appendChild(shapeWrapper);
+                }
+                
+                el.appendChild(contentWrapper);
+                boardEl.appendChild(el);
+            });
+            
+            renderSelection();
+        }
+
+        function renderSelection() {
+            const cards = document.querySelectorAll('.card');
+            cards.forEach(c => c.classList.remove('selected'));
+            
+            selectedIndices.forEach(idx => {
+                const el = document.getElementById(`card-${idx}`);
+                if (el) el.classList.add('selected');
+            });
+        }
+
+        function renderShape(card) {
+            const color = COLORS[card.color];
+            const shape = SHAPES[card.shape];
+            const shading = SHADINGS[card.shading];
+            
+            let fill = 'transparent';
+            let stroke = color;
+            
+            if (shading === 'solid') {
+                fill = color;
+            } else if (shading === 'striped') {
+                fill = `url(#${STRIPE_IDS[card.color]})`;
+            }
+            
+            // Smoother Squiggle and other shapes
+            if (shape === 'oval') {
+                return `<svg viewBox="0 0 100 50" preserveAspectRatio="xMidYMid meet">
+                    <rect x="5" y="5" width="90" height="40" rx="20" ry="20" fill="${fill}" stroke="${stroke}" stroke-width="4" />
+                </svg>`;
+            } else if (shape === 'diamond') {
+                return `<svg viewBox="0 0 100 50" preserveAspectRatio="xMidYMid meet">
+                    <polygon points="5,25 50,5 95,25 50,45" fill="${fill}" stroke="${stroke}" stroke-width="4" stroke-linejoin="round"/>
+                </svg>`;
+            } else if (shape === 'squiggle') {
+                // New non-intersecting peanut/wave shape
+                return `<svg viewBox="0 0 100 50" preserveAspectRatio="xMidYMid meet">
+                    <path d="M15,25 Q25,10 40,20 T70,20 Q85,10 90,25 Q85,45 65,35 T30,35 Q15,45 15,25 Z" fill="${fill}" stroke="${stroke}" stroke-width="4" stroke-linejoin="round"/>
+                </svg>`;
+            }
+        }
+
+        // --- Timer & Utils ---
+
+        function startTimer() {
+            if (timerInterval) clearInterval(timerInterval);
+            updateHUD();
+            
+            timerInterval = setInterval(() => {
+                if (!isGameActive) return;
+                
+                timeLeft--;
+                updateHUD();
+                
+                if (timeLeft <= 0) {
+                    endGame();
+                }
+            }, 1000);
+        }
+
+        function endGame() {
+            clearInterval(timerInterval);
+            isGameActive = false;
+            playSound('end');
+            
+            overlayTitle.innerText = "Time's Up!";
+            overlayContent.innerHTML = `
+                <div class="flex flex-col items-center">
+                    <p class="text-xs font-bold uppercase tracking-widest text-slate-400 mb-2">Sets Found</p>
+                    <p class="text-6xl font-black text-white mb-6">${score}</p>
+                </div>
+            `;
+            actionBtn.innerText = "Play Again";
+            overlay.classList.remove('hidden');
+        }
+
+        function updateHUD() {
+            scoreDisplay.innerText = score;
+            timeDisplay.innerText = `${timeLeft}s`;
+            if (timeLeft <= 10) timeDisplay.classList.add('text-rose-500');
+            else timeDisplay.classList.remove('text-rose-500');
+        }
+
+        function showFeedback(text, colorClass) {
+            feedbackEl.innerText = text;
+            feedbackEl.className = `absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 pointer-events-none z-40 font-black text-4xl drop-shadow-lg transition-all duration-300 ${colorClass} whitespace-nowrap`;
+            
+            requestAnimationFrame(() => {
+                feedbackEl.style.opacity = '1';
+                feedbackEl.style.transform = 'translate(-50%, -50%) scale(1.2)';
+            });
+
+            setTimeout(() => {
+                feedbackEl.style.opacity = '0';
+                feedbackEl.style.transform = 'translate(-50%, -50%) scale(0.5)';
+            }, 800);
+        }
+
+        actionBtn.addEventListener('click', initGame);
+
+    </script>
+</body>
+</html>
