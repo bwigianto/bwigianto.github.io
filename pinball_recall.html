@@ -1,0 +1,709 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pinball Recall</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap');
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f0f4f8;
+            touch-action: none;
+            user-select: none;
+        }
+
+        /* Canvas Container */
+        #game-container {
+            position: relative;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+            border-radius: 16px;
+            overflow: hidden;
+            background-color: #1e293b; /* Slate-800 */
+        }
+
+        canvas {
+            display: block;
+            cursor: pointer;
+        }
+
+        .overlay {
+            backdrop-filter: blur(8px);
+            background-color: rgba(30, 41, 59, 0.85); /* Slate-800 with opacity */
+        }
+    </style>
+</head>
+<body class="h-screen w-screen flex flex-col overflow-hidden text-slate-800 bg-slate-100">
+
+    <!-- Header / HUD -->
+    <header class="flex-none p-4 flex justify-between items-center bg-white shadow-sm z-20">
+        <div class="flex items-center gap-4">
+            <a href="index.html" class="flex items-center justify-center w-10 h-10 rounded-full hover:bg-slate-100 text-slate-400 hover:text-purple-600 transition-colors" title="Back to Menu">
+                <i class="fa-solid fa-house"></i>
+            </a>
+            <div class="flex items-center gap-3 pl-4 border-l border-slate-200">
+                <div class="bg-purple-500 text-white p-2 rounded-lg">
+                    <i class="fa-solid fa-shapes text-xl"></i>
+                </div>
+                <div>
+                    <h1 class="font-bold text-xl leading-none">Pinball Recall</h1>
+                    <p class="text-xs text-slate-500 font-semibold">SPATIAL LOGIC</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="flex gap-8 text-sm md:text-base">
+            <div class="text-center">
+                <p class="text-slate-400 text-[10px] font-bold uppercase tracking-wider">Score</p>
+                <p id="score-display" class="font-bold text-xl tabular-nums leading-none">0</p>
+            </div>
+            <div class="text-center">
+                <p class="text-slate-400 text-[10px] font-bold uppercase tracking-wider">Round</p>
+                <p id="round-display" class="font-bold text-xl tabular-nums leading-none">1</p>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Game Area -->
+    <main class="flex-grow flex flex-col items-center justify-center relative p-4">
+        
+        <div id="game-container" class="relative">
+            <canvas id="game-canvas"></canvas>
+            
+            <!-- Start Overlay -->
+            <div id="overlay" class="absolute inset-0 z-50 flex flex-col items-center justify-center overlay text-white p-8">
+                <div class="mb-6 inline-flex items-center justify-center w-20 h-20 rounded-full bg-purple-500/20 text-purple-300 mb-4 ring-2 ring-purple-500/50">
+                    <i class="fa-solid fa-eye text-3xl"></i>
+                </div>
+                
+                <h2 id="overlay-title" class="text-3xl font-black mb-2 text-white">Pinball Recall</h2>
+                <div id="overlay-message" class="text-slate-300 mb-8 text-sm text-center max-w-xs">
+                    Memorize the bumper locations. When they disappear, predict where the ball will exit!
+                </div>
+                
+                <button id="action-btn" class="w-full max-w-xs bg-purple-600 hover:bg-purple-500 text-white font-bold py-4 px-6 rounded-xl transition-all hover:scale-105 active:scale-95 shadow-lg shadow-purple-900/50">
+                    Start Game
+                </button>
+            </div>
+
+            <!-- Feedback Toast -->
+            <div id="feedback" class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 pointer-events-none z-40 opacity-0 transition-all duration-300 font-black text-4xl drop-shadow-lg scale-50 whitespace-nowrap text-white">
+                PERFECT!
+            </div>
+        </div>
+
+        <!-- Progress Bar -->
+        <div class="w-full max-w-md mt-6 h-1.5 bg-slate-200 rounded-full overflow-hidden">
+            <div id="timer-bar" class="h-full bg-purple-500 transition-all duration-100 ease-linear" style="width: 100%"></div>
+        </div>
+        <p id="status-text" class="mt-2 text-xs font-bold text-slate-400 uppercase tracking-widest">Ready</p>
+
+    </main>
+
+    <script>
+        const canvas = document.getElementById('game-canvas');
+        const ctx = canvas.getContext('2d');
+        const scoreDisplay = document.getElementById('score-display');
+        const roundDisplay = document.getElementById('round-display');
+        const overlay = document.getElementById('overlay');
+        const actionBtn = document.getElementById('action-btn');
+        const feedbackEl = document.getElementById('feedback');
+        const timerBar = document.getElementById('timer-bar');
+        const statusText = document.getElementById('status-text');
+
+        // Game Configuration
+        const GRID_SIZE = 5; // 5x5 grid
+        const CELL_SIZE = 60;
+        const PADDING = 40; // Space around grid for entrance/exits
+        const WIDTH = (GRID_SIZE * CELL_SIZE) + (PADDING * 2);
+        const HEIGHT = (GRID_SIZE * CELL_SIZE) + (PADDING * 2);
+
+        // State Enums
+        const STATE = {
+            IDLE: 0,
+            MEMORIZE: 1,
+            INPUT: 2,
+            ANIMATING: 3,
+            GAME_OVER: 4
+        };
+
+        // Bumper Types
+        const EMPTY = 0;
+        const FWD_SLASH = 1; //  /
+        const BCK_SLASH = 2; //  \
+
+        // Game State
+        let gameState = {
+            status: STATE.IDLE,
+            round: 1,
+            score: 0,
+            grid: [],
+            ball: null, // {x, y, dx, dy, active}
+            entrance: null, // {col, row, direction}
+            correctExit: null, // {col, row}
+            hoveredExit: null,
+            timer: 0,
+            maxTime: 0
+        };
+
+        // Resize handling
+        function setupCanvas() {
+            // Scale for high DPI
+            const dpr = window.devicePixelRatio || 1;
+            canvas.width = WIDTH * dpr;
+            canvas.height = HEIGHT * dpr;
+            canvas.style.width = `${WIDTH}px`;
+            canvas.style.height = `${HEIGHT}px`;
+            ctx.scale(dpr, dpr);
+        }
+        setupCanvas();
+
+        // Audio
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        function playSound(type) {
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            const now = audioCtx.currentTime;
+
+            if (type === 'pop') {
+                osc.frequency.setValueAtTime(600, now);
+                osc.frequency.exponentialRampToValueAtTime(800, now + 0.1);
+                gain.gain.setValueAtTime(0.1, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
+                osc.start(now);
+                osc.stop(now + 0.1);
+            } else if (type === 'bounce') {
+                osc.type = 'square';
+                osc.frequency.setValueAtTime(200, now);
+                gain.gain.setValueAtTime(0.05, now);
+                gain.gain.linearRampToValueAtTime(0, now + 0.05);
+                osc.start(now);
+                osc.stop(now + 0.05);
+            } else if (type === 'success') {
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(400, now);
+                osc.frequency.linearRampToValueAtTime(800, now + 0.2);
+                gain.gain.setValueAtTime(0.1, now);
+                gain.gain.linearRampToValueAtTime(0, now + 0.3);
+                osc.start(now);
+                osc.stop(now + 0.3);
+            } else if (type === 'fail') {
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(150, now);
+                osc.frequency.linearRampToValueAtTime(100, now + 0.3);
+                gain.gain.setValueAtTime(0.1, now);
+                gain.gain.linearRampToValueAtTime(0, now + 0.3);
+                osc.start(now);
+                osc.stop(now + 0.3);
+            }
+        }
+
+        // --- Logic ---
+
+        function initGame() {
+            gameState.score = 0;
+            gameState.round = 1;
+            updateHUD();
+            startRound();
+            overlay.classList.add('hidden');
+        }
+
+        // Simulate path to find exit (logic only)
+        function simulatePath(start, isVisual) {
+            let col = start.col;
+            let row = start.row;
+            let dx = start.dx;
+            let dy = start.dy;
+
+            // Step onto grid first
+            col += dx;
+            row += dy;
+
+            let steps = 0;
+            let bounces = 0;
+            const maxSteps = 100; // prevent infinite loops
+
+            while (col >= 0 && col < GRID_SIZE && row >= 0 && row < GRID_SIZE && steps < maxSteps) {
+                const idx = row * GRID_SIZE + col;
+                const cell = gameState.grid[idx];
+
+                if (cell === FWD_SLASH) { //  /
+                    bounces++;
+                    // Reflect: new_dx = -dy, new_dy = -dx
+                    const temp = dx;
+                    dx = -dy;
+                    dy = -temp;
+                } else if (cell === BCK_SLASH) { //  \
+                    bounces++;
+                    // Reflect: new_dx = dy, new_dy = dx
+                    const temp = dx;
+                    dx = dy;
+                    dy = temp;
+                }
+
+                col += dx;
+                row += dy;
+                steps++;
+            }
+
+            // Return invalid if loop detected
+            if (steps >= maxSteps) return { col: -99, row: -99, bounces: -1 };
+
+            return { col, row, bounces };
+        }
+
+        function handleInput(e) {
+            if (gameState.status !== STATE.INPUT) return;
+
+            const rect = canvas.getBoundingClientRect();
+            const x = (e.clientX - rect.left) * (canvas.width / rect.width / window.devicePixelRatio);
+            const y = (e.clientY - rect.top) * (canvas.height / rect.height / window.devicePixelRatio);
+
+            const clicked = getExitFromCoords(x, y);
+            
+            if (clicked) {
+                // Start Animation Phase
+                gameState.status = STATE.ANIMATING;
+                gameState.hoveredExit = null;
+                
+                // Init Ball
+                gameState.ball = {
+                    x: (gameState.entrance.col * CELL_SIZE) + PADDING + (CELL_SIZE/2),
+                    y: (gameState.entrance.row * CELL_SIZE) + PADDING + (CELL_SIZE/2),
+                    col: gameState.entrance.col,
+                    row: gameState.entrance.row,
+                    dx: gameState.entrance.dx,
+                    dy: gameState.entrance.dy,
+                    targetX: null,
+                    targetY: null,
+                    speed: 15
+                };
+
+                // Check correctness for scoring later
+                const isCorrect = (clicked.col === gameState.correctExit.col && clicked.row === gameState.correctExit.row);
+                
+                animateBall(isCorrect);
+            }
+        }
+
+        function startRound() {
+            // Difficulty scaling
+            const bumperCount = Math.min(4 + Math.floor(gameState.round / 2), 12);
+            const memorizeTime = Math.max(3000 - (gameState.round * 100), 1000); // Faster over time
+
+            // Constraint Calculation
+            // Target Bounces = ceil(sqrt(Round))
+            const targetBounces = Math.ceil(Math.sqrt(gameState.round));
+
+            let validConfig = false;
+            let attempts = 0;
+
+            // Generation Loop
+            while (!validConfig && attempts < 500) {
+                attempts++;
+                
+                // 1. Clear Grid
+                gameState.grid = Array(GRID_SIZE * GRID_SIZE).fill(EMPTY);
+                
+                // 2. Determine Entrance (Edge)
+                const side = Math.floor(Math.random() * 4);
+                const pos = Math.floor(Math.random() * GRID_SIZE);
+                
+                if (side === 0) gameState.entrance = { col: pos, row: -1, dx: 0, dy: 1 }; // Top
+                else if (side === 1) gameState.entrance = { col: GRID_SIZE, row: pos, dx: -1, dy: 0 }; // Right
+                else if (side === 2) gameState.entrance = { col: pos, row: GRID_SIZE, dx: 0, dy: -1 }; // Bottom
+                else gameState.entrance = { col: -1, row: pos, dx: 1, dy: 0 }; // Left
+
+                // 3. Place Bumpers Randomly
+                let placed = 0;
+                while (placed < bumperCount) {
+                    const idx = Math.floor(Math.random() * gameState.grid.length);
+                    if (gameState.grid[idx] === EMPTY) {
+                        gameState.grid[idx] = Math.random() > 0.5 ? FWD_SLASH : BCK_SLASH;
+                        placed++;
+                    }
+                }
+
+                // 4. Simulate and Check Constraints
+                const result = simulatePath(gameState.entrance, false);
+                
+                if (result.bounces === targetBounces && result.col !== -99) {
+                    validConfig = true;
+                    gameState.correctExit = { col: result.col, row: result.row };
+                }
+            }
+
+            // Fallback if random generation fails to hit exact bounce count
+            if (!validConfig) {
+                const result = simulatePath(gameState.entrance, false);
+                gameState.correctExit = { col: result.col, row: result.row };
+            }
+
+            // Set Phase
+            gameState.status = STATE.MEMORIZE;
+            gameState.ball = null;
+            gameState.hoveredExit = null;
+            
+            statusText.innerText = "Memorize the Bumpers!";
+            statusText.className = "mt-2 text-xs font-bold text-purple-500 uppercase tracking-widest";
+            
+            // Timer for Memorize Phase
+            let startTime = Date.now();
+            gameState.maxTime = memorizeTime;
+            
+            const memLoop = () => {
+                if (gameState.status !== STATE.MEMORIZE) return;
+                const elapsed = Date.now() - startTime;
+                const pct = Math.max(0, 100 - (elapsed / memorizeTime) * 100);
+                timerBar.style.width = `${pct}%`;
+
+                if (elapsed >= memorizeTime) {
+                    playSound('pop');
+                    gameState.status = STATE.INPUT;
+                    statusText.innerText = "Where will the ball exit?";
+                    statusText.className = "mt-2 text-xs font-bold text-slate-600 uppercase tracking-widest";
+                    timerBar.style.width = "0%";
+                    draw();
+                } else {
+                    draw();
+                    requestAnimationFrame(memLoop);
+                }
+            };
+            requestAnimationFrame(memLoop);
+        }
+
+        function animateBall(isCorrect) {
+            const ball = gameState.ball;
+            
+            // Determine next target cell center
+            // If currently at entrance (outside), move to first grid cell
+            // If inside, calculate physics
+            
+            // Logic: Move from current center to next center
+            // Need to detect if next 'center' is a bumper or exit
+            
+            const step = () => {
+                if (!ball.targetX) {
+                    // Logic to find next cell coordinates
+                    let nextCol = ball.col + ball.dx;
+                    let nextRow = ball.row + ball.dy;
+                    
+                    ball.targetX = (nextCol * CELL_SIZE) + PADDING + (CELL_SIZE/2);
+                    ball.targetY = (nextRow * CELL_SIZE) + PADDING + (CELL_SIZE/2);
+                    
+                    // Logic check for bumper interaction at the CURRENT cell (after arrival)
+                    // But we are moving TO nextCol.
+                    // Physics happens when we ARRIVE at a cell containing a bumper.
+                }
+
+                // Move towards target
+                const dist = Math.hypot(ball.targetX - ball.x, ball.targetY - ball.y);
+                
+                if (dist <= ball.speed) {
+                    // Arrived at target
+                    ball.x = ball.targetX;
+                    ball.y = ball.targetY;
+                    ball.targetX = null; // Reset for next step
+                    
+                    // Update logical position
+                    ball.col += ball.dx;
+                    ball.row += ball.dy;
+
+                    // Check bounds (Exit)
+                    if (ball.col < 0 || ball.col >= GRID_SIZE || ball.row < 0 || ball.row >= GRID_SIZE) {
+                        // Exited
+                        finishRound(isCorrect);
+                        return; 
+                    }
+
+                    // Check Bumper Collision
+                    const idx = ball.row * GRID_SIZE + ball.col;
+                    const cell = gameState.grid[idx];
+                    
+                    if (cell !== EMPTY) {
+                        playSound('bounce');
+                        // Change direction immediately
+                        if (cell === FWD_SLASH) {
+                            const temp = ball.dx;
+                            ball.dx = -ball.dy;
+                            ball.dy = -temp;
+                        } else if (cell === BCK_SLASH) {
+                            const temp = ball.dx;
+                            ball.dx = ball.dy;
+                            ball.dy = temp;
+                        }
+                    }
+                } else {
+                    const angle = Math.atan2(ball.targetY - ball.y, ball.targetX - ball.x);
+                    ball.x += Math.cos(angle) * ball.speed;
+                    ball.y += Math.sin(angle) * ball.speed;
+                }
+
+                draw();
+                requestAnimationFrame(step);
+            };
+            step();
+        }
+
+        function finishRound(isCorrect) {
+            if (isCorrect) {
+                playSound('success');
+                showFeedback("CORRECT!", "text-green-400");
+                gameState.score += 100 + (gameState.round * 10);
+                gameState.round++;
+                updateHUD();
+                
+                // Briefly pause in IDLE state (which reveals bumpers) before next round
+                gameState.status = STATE.IDLE; 
+                draw();
+                
+                setTimeout(() => {
+                    startRound();
+                }, 1000);
+            } else {
+                playSound('fail');
+                showFeedback("GAME OVER", "text-red-400");
+                
+                // End Game Flow
+                gameState.status = STATE.GAME_OVER;
+                draw(); // Reveal bumpers for the player to see what they missed
+
+                setTimeout(() => {
+                    showGameOverScreen();
+                }, 1500);
+            }
+        }
+
+        function showGameOverScreen() {
+            const title = document.getElementById('overlay-title');
+            const message = document.getElementById('overlay-message');
+            const btn = document.getElementById('action-btn');
+            
+            title.innerText = "Game Over";
+            message.className = "text-slate-300 mb-8 text-sm text-center w-full max-w-sm"; // Ensure width for grid
+            message.innerHTML = `
+                <div class="space-y-4">
+                    <div class="flex flex-col items-center">
+                        <div class="text-xs font-bold uppercase tracking-widest text-slate-400 mb-1">Final Score</div>
+                        <div class="text-6xl font-black text-white tracking-tighter shadow-purple-500/50 drop-shadow-lg">${gameState.score.toLocaleString()}</div>
+                    </div>
+                    
+                    <div class="grid grid-cols-2 gap-3 w-full">
+                        <div class="bg-slate-700/40 p-3 rounded-lg border border-slate-600/50">
+                            <div class="text-[10px] font-bold uppercase text-slate-400">Rounds Cleared</div>
+                            <div class="text-2xl font-bold text-green-400">${gameState.round - 1}</div>
+                        </div>
+                        <div class="bg-slate-700/40 p-3 rounded-lg border border-slate-600/50">
+                            <div class="text-[10px] font-bold uppercase text-slate-400">Mistakes</div>
+                            <div class="text-2xl font-bold text-red-400">1</div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            btn.innerText = "Play Again";
+            overlay.classList.remove('hidden');
+        }
+
+        function getExitFromCoords(x, y) {
+            // Check boundaries around grid
+            // Grid area: PADDING to WIDTH-PADDING
+            
+            const col = Math.floor((x - PADDING) / CELL_SIZE);
+            const row = Math.floor((y - PADDING) / CELL_SIZE);
+            
+            // Check Top Exits
+            if (y < PADDING && col >= 0 && col < GRID_SIZE) return { col: col, row: -1 };
+            // Check Bottom Exits
+            if (y > HEIGHT - PADDING && col >= 0 && col < GRID_SIZE) return { col: col, row: GRID_SIZE };
+            // Check Left Exits
+            if (x < PADDING && row >= 0 && row < GRID_SIZE) return { col: -1, row: row };
+            // Check Right Exits
+            if (x > WIDTH - PADDING && row >= 0 && row < GRID_SIZE) return { col: GRID_SIZE, row: row };
+
+            return null;
+        }
+
+        // --- Rendering ---
+
+        function draw() {
+            // Background
+            ctx.fillStyle = '#1e293b'; // Slate 800
+            ctx.fillRect(0, 0, WIDTH, HEIGHT);
+
+            // Draw Grid
+            ctx.lineWidth = 2;
+            ctx.strokeStyle = '#334155'; // Slate 700
+            
+            for (let i = 0; i <= GRID_SIZE; i++) {
+                // Vertical
+                ctx.beginPath();
+                ctx.moveTo(PADDING + (i * CELL_SIZE), PADDING);
+                ctx.lineTo(PADDING + (i * CELL_SIZE), HEIGHT - PADDING);
+                ctx.stroke();
+                
+                // Horizontal
+                ctx.beginPath();
+                ctx.moveTo(PADDING, PADDING + (i * CELL_SIZE));
+                ctx.lineTo(WIDTH - PADDING, PADDING + (i * CELL_SIZE));
+                ctx.stroke();
+            }
+
+            // Draw Bumpers
+            // Reveal on IDLE (start/between rounds), MEMORIZE, or GAME_OVER
+            const revealAll = gameState.status === STATE.IDLE || gameState.status === STATE.MEMORIZE || gameState.status === STATE.GAME_OVER;
+
+            gameState.grid.forEach((cell, idx) => {
+                if (cell === EMPTY) return;
+                
+                // Visibility check
+                if (!revealAll) {
+                    // Check if ball is currently on this tile, if so, reveal it briefly
+                    if (gameState.ball) {
+                        const ballIdx = gameState.ball.row * GRID_SIZE + gameState.ball.col;
+                        if (ballIdx !== idx) return; // Hidden
+                    } else {
+                        return; // Hidden
+                    }
+                }
+
+                const c = idx % GRID_SIZE;
+                const r = Math.floor(idx / GRID_SIZE);
+                const x = PADDING + c * CELL_SIZE;
+                const y = PADDING + r * CELL_SIZE;
+
+                ctx.strokeStyle = '#a855f7'; // Purple 500
+                ctx.lineWidth = 4;
+                ctx.beginPath();
+                if (cell === FWD_SLASH) { // /
+                    ctx.moveTo(x + 10, y + CELL_SIZE - 10);
+                    ctx.lineTo(x + CELL_SIZE - 10, y + 10);
+                } else { // \
+                    ctx.moveTo(x + 10, y + 10);
+                    ctx.lineTo(x + CELL_SIZE - 10, y + CELL_SIZE - 10);
+                }
+                ctx.stroke();
+                
+                // Glow effect
+                ctx.shadowColor = '#a855f7';
+                ctx.shadowBlur = 10;
+                ctx.stroke();
+                ctx.shadowBlur = 0;
+            });
+
+            // Draw Entrance Arrow
+            if (gameState.entrance) {
+                const ent = gameState.entrance;
+                let ex = PADDING + (ent.col * CELL_SIZE) + (CELL_SIZE/2);
+                let ey = PADDING + (ent.row * CELL_SIZE) + (CELL_SIZE/2);
+                
+                // Adjust for being 'outside' the grid logic (-1 or GRID_SIZE)
+                if (ent.col === -1) ex += CELL_SIZE/2; 
+                else if (ent.col === GRID_SIZE) ex -= CELL_SIZE/2;
+                if (ent.row === -1) ey += CELL_SIZE/2;
+                else if (ent.row === GRID_SIZE) ey -= CELL_SIZE/2;
+
+                // If outside, shift slightly further out for visual
+                if (ent.col === -1) ex -= 20;
+                if (ent.col === GRID_SIZE) ex += 20;
+                if (ent.row === -1) ey -= 20;
+                if (ent.row === GRID_SIZE) ey += 20;
+
+                ctx.fillStyle = '#fff';
+                ctx.beginPath();
+                ctx.arc(ex, ey, 8, 0, Math.PI * 2);
+                ctx.fill();
+                
+                // Label "START"
+                ctx.fillStyle = '#94a3b8';
+                ctx.font = '10px Inter';
+                ctx.textAlign = 'center';
+                ctx.fillText('START', ex, ey + 20);
+            }
+
+            // Draw Exits / Hover State
+            if (gameState.status === STATE.INPUT && gameState.hoveredExit) {
+                const h = gameState.hoveredExit;
+                let hx = PADDING + (h.col * CELL_SIZE) + (CELL_SIZE/2);
+                let hy = PADDING + (h.row * CELL_SIZE) + (CELL_SIZE/2);
+                
+                // Clamp to edge visual
+                if (h.col === -1) hx = PADDING / 2;
+                if (h.col === GRID_SIZE) hx = WIDTH - (PADDING / 2);
+                if (h.row === -1) hy = PADDING / 2;
+                if (h.row === GRID_SIZE) hy = HEIGHT - (PADDING / 2);
+
+                ctx.fillStyle = 'rgba(168, 85, 247, 0.3)'; // Purple transparent
+                ctx.beginPath();
+                ctx.arc(hx, hy, 15, 0, Math.PI*2);
+                ctx.fill();
+            }
+
+            // Draw Ball
+            if (gameState.ball) {
+                ctx.fillStyle = '#fbbf24'; // Amber 400
+                ctx.shadowColor = '#fbbf24';
+                ctx.shadowBlur = 10;
+                ctx.beginPath();
+                ctx.arc(gameState.ball.x, gameState.ball.y, 10, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.shadowBlur = 0;
+            }
+        }
+
+        // --- Interaction ---
+
+        canvas.addEventListener('mousemove', (e) => {
+            if (gameState.status !== STATE.INPUT) return;
+            const rect = canvas.getBoundingClientRect();
+            const x = (e.clientX - rect.left) * (canvas.width / rect.width / window.devicePixelRatio);
+            const y = (e.clientY - rect.top) * (canvas.height / rect.height / window.devicePixelRatio);
+            
+            const ex = getExitFromCoords(x, y);
+            if (ex) {
+                gameState.hoveredExit = ex;
+                canvas.style.cursor = 'pointer';
+            } else {
+                gameState.hoveredExit = null;
+                canvas.style.cursor = 'default';
+            }
+            draw();
+        });
+
+        canvas.addEventListener('click', handleInput);
+
+        // --- UI ---
+
+        function updateHUD() {
+            scoreDisplay.innerText = gameState.score;
+            roundDisplay.innerText = gameState.round;
+        }
+
+        function showFeedback(text, colorClass) {
+            feedbackEl.innerText = text;
+            feedbackEl.className = `absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 pointer-events-none z-40 font-black text-4xl drop-shadow-lg transition-all duration-300 ${colorClass} whitespace-nowrap`;
+            
+            requestAnimationFrame(() => {
+                feedbackEl.style.opacity = '1';
+                feedbackEl.style.transform = 'translate(-50%, -50%) scale(1.2)';
+            });
+
+            setTimeout(() => {
+                feedbackEl.style.opacity = '0';
+                feedbackEl.style.transform = 'translate(-50%, -50%) scale(0.5)';
+            }, 800);
+        }
+
+        actionBtn.addEventListener('click', () => {
+            overlay.classList.add('hidden');
+            initGame();
+        });
+
+    </script>
+</body>
+</html>
