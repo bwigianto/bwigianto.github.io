@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Memory Match</title>
+    <title>Offset Match</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
@@ -146,7 +146,7 @@
                     <i class="fa-solid fa-rotate text-xl"></i>
                 </div>
                 <div>
-                    <h1 class="font-bold text-xl leading-none">Memory Match</h1>
+                    <h1 class="font-bold text-xl leading-none">Offset Match</h1>
                     <p class="text-xs text-slate-500 font-semibold">2-BACK MEMORY</p>
                 </div>
             </div>
@@ -158,15 +158,14 @@
                 <p id="score-display" class="font-bold text-xl tabular-nums leading-none">0</p>
             </div>
             <div class="text-center">
-                <p class="text-slate-400 text-[10px] font-bold uppercase tracking-wider">Accuracy</p>
+                <p class="text-slate-400 text-[10px] font-bold uppercase tracking-wider">Streak</p>
                 <div class="flex flex-col items-center leading-none">
-                    <p id="accuracy-pct" class="font-bold text-xl tabular-nums">100%</p>
-                    <p id="accuracy-fraction" class="text-xs text-slate-400 font-medium tabular-nums">0/0</p>
+                    <p id="streak-display" class="font-bold text-xl tabular-nums text-amber-500">0</p>
                 </div>
             </div>
             <div class="text-center">
-                <p class="text-slate-400 text-[10px] font-bold uppercase tracking-wider">Turn</p>
-                <p id="turn-display" class="font-bold text-xl tabular-nums leading-none">1</p>
+                <p class="text-slate-400 text-[10px] font-bold uppercase tracking-wider">Time</p>
+                <p id="time-display" class="font-bold text-xl tabular-nums leading-none text-slate-800">20s</p>
             </div>
         </div>
     </header>
@@ -238,21 +237,22 @@
         <div id="overlay" class="absolute inset-0 z-50 flex flex-col items-center justify-center overlay backdrop-blur-sm bg-white/80">
             <div class="bg-white p-8 rounded-2xl shadow-2xl text-center max-w-sm w-full mx-4 border border-slate-100">
                 <div class="mb-6 inline-flex items-center justify-center w-20 h-20 rounded-full bg-indigo-100 text-indigo-600 mb-4">
-                    <i class="fa-solid fa-rotate text-3xl"></i>
+                    <i id="overlay-icon" class="fa-solid fa-rotate text-3xl"></i>
                 </div>
                 
-                <h2 class="text-2xl font-black mb-2 text-slate-800">Memory Match</h2>
-                <div class="text-slate-600 mb-8 text-sm text-left bg-slate-50 p-4 rounded-lg border border-slate-100">
+                <h2 id="overlay-title" class="text-2xl font-black mb-2 text-slate-800">Offset Match</h2>
+                <div id="overlay-content" class="text-slate-600 mb-8 text-sm text-left bg-slate-50 p-4 rounded-lg border border-slate-100">
                     <p class="mb-2 font-bold text-indigo-600">How to play:</p>
                     <ul class="list-disc list-inside space-y-2 text-slate-500">
                         <li>Watch the cards flow.</li>
-                        <li>Compare the <span class="font-bold text-amber-600">Top-Right (Visible)</span> card with the <span class="font-bold text-amber-600">Bottom-Left (Hidden)</span> card.</li>
-                        <li>Press <span class="font-bold">Match</span> if they have the same symbol.</li>
+                        <li>Compare <span class="font-bold text-amber-600">Top-Right</span> vs <span class="font-bold text-amber-600">Bottom-Left</span>.</li>
+                        <li>Round lasts <span class="font-bold text-slate-800">20 Seconds</span>.</li>
+                        <li>Build streaks for <span class="font-bold text-green-600">Bonus Points</span>!</li>
                     </ul>
                 </div>
                 
                 <button id="start-btn" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 px-6 rounded-xl transition-transform hover:-translate-y-1 active:translate-y-0 shadow-lg shadow-indigo-200">
-                    Start Game
+                    Start Round
                 </button>
             </div>
         </div>
@@ -271,21 +271,27 @@
         const CONFIG = {
             animDuration: 400, // ms
             icons: ['fa-anchor', 'fa-bolt', 'fa-bomb', 'fa-crown', 'fa-diamond', 'fa-ghost', 'fa-heart', 'fa-star', 'fa-moon', 'fa-sun'],
+            roundTime: 20, // seconds
+            baseScore: 10,
+            penalty: 10
         };
 
         const STATE = {
             score: 0,
-            turn: 0,
-            attempts: 0,
+            timeLeft: 0,
+            timerInterval: null,
+            streak: 0,
             correctCount: 0,
+            incorrectCount: 0,
             activeCards: [], // [{id, icon, positionIndex, domElement}]
             isInputActive: false,
-            isWarmup: true
+            isWarmup: true,
+            isRoundActive: false
         };
 
-        // Updated Positions: Index 0 is Start (UL) but now visually hidden/transparent
+        // Updated Positions
         const POSITIONS = [
-            { top: 0, left: 0, label: 'UL', visible: false },  // 0: Start (Invisible/Spawn)
+            { top: 0, left: 0, label: 'UL', visible: false },  // 0: Spawn
             { top: 0, left: 180, label: 'UR', visible: true, faceUp: true }, // 1: Visible Current
             { top: 180, left: 180, label: 'LR', visible: true, faceUp: false }, // 2: Hidden 1-Back
             { top: 180, left: 0, label: 'LL', visible: true, faceUp: false },   // 3: Hidden Target
@@ -295,12 +301,15 @@
         // DOM Elements
         const cardsLayer = document.getElementById('cards-layer');
         const scoreDisplay = document.getElementById('score-display');
-        const turnDisplay = document.getElementById('turn-display');
-        const accuracyPct = document.getElementById('accuracy-pct');
-        const accuracyFraction = document.getElementById('accuracy-fraction');
+        const timeDisplay = document.getElementById('time-display');
+        const streakDisplay = document.getElementById('streak-display');
         const feedbackEl = document.getElementById('feedback');
         const controlsEl = document.getElementById('controls');
         const overlay = document.getElementById('overlay');
+        const overlayTitle = document.getElementById('overlay-title');
+        const overlayContent = document.getElementById('overlay-content');
+        const overlayIcon = document.getElementById('overlay-icon');
+        const startBtn = document.getElementById('start-btn');
         const btnYes = document.getElementById('btn-yes');
         const btnNo = document.getElementById('btn-no');
 
@@ -339,6 +348,14 @@
                 gain.gain.linearRampToValueAtTime(0, now + 0.2);
                 osc.start(now);
                 osc.stop(now + 0.2);
+            } else if (type === 'end') {
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(400, now);
+                osc.frequency.linearRampToValueAtTime(200, now + 0.5);
+                gain.gain.setValueAtTime(0.1, now);
+                gain.gain.linearRampToValueAtTime(0, now + 0.5);
+                osc.start(now);
+                osc.stop(now + 0.5);
             }
         }
 
@@ -347,77 +364,109 @@
          */
         function initGame() {
             STATE.score = 0;
-            STATE.turn = 0;
-            STATE.attempts = 0;
+            STATE.streak = 0;
             STATE.correctCount = 0;
+            STATE.incorrectCount = 0;
+            STATE.timeLeft = CONFIG.roundTime;
             STATE.activeCards = [];
             STATE.isWarmup = true;
+            STATE.isRoundActive = true;
             cardsLayer.innerHTML = '';
             
             overlay.classList.add('opacity-0', 'pointer-events-none');
             updateHUD();
 
-            // Pipeline: 
-            // 1. Spawn Card 1 (Pos 0 - Invisible)
-            // 2. Rotate -> Card 1 at Pos 1 (UR Visible). Spawn Card 2 (Pos 0).
-            // 3. Rotate -> Card 1 at Pos 2 (LR Hidden). Card 2 at Pos 1 (UR Visible). Spawn Card 3 (Pos 0).
-            // 4. Rotate -> Card 1 at Pos 3 (LL Target). Card 2 at Pos 2. Card 3 at Pos 1 (Current). Spawn Card 4.
-            //    NOW we compare Card 3 (Current) vs Card 1 (Target).
-            
+            // Fill pipeline
             spawnCard(); // 1
             setTimeout(() => {
                 rotateCards(); 
                 spawnCard(); // 2
-                
                 setTimeout(() => {
                     rotateCards(); 
                     spawnCard(); // 3
-                    
                     setTimeout(() => {
                         rotateCards(); 
                         spawnCard(); // 4
                         
                         STATE.isWarmup = false;
                         enableControls();
-                        showToast("Compare Top-Right vs Bottom-Left!");
+                        showToast("Go!");
+                        startTimer();
                     }, CONFIG.animDuration + 100);
                 }, CONFIG.animDuration + 100);
             }, CONFIG.animDuration + 100);
         }
-        
-        function spawnCard() {
-            // Logic to ensure matches ~50% of the time.
-            // The card we spawn NOW (Pos 0) will be compared next turn (when it moves to Pos 1/UR) 
-            // against the card currently at Pos 2/LR (which will move to Pos 3/LL).
+
+        function startTimer() {
+            if (STATE.timerInterval) clearInterval(STATE.timerInterval);
+            updateHUD();
             
+            STATE.timerInterval = setInterval(() => {
+                if (!STATE.isRoundActive) {
+                    clearInterval(STATE.timerInterval);
+                    return;
+                }
+                
+                STATE.timeLeft--;
+                updateHUD();
+
+                if (STATE.timeLeft <= 0) {
+                    endRound();
+                }
+            }, 1000);
+        }
+
+        function endRound() {
+            clearInterval(STATE.timerInterval);
+            STATE.isRoundActive = false;
+            disableControls();
+            playSound('end');
+            
+            // Show summary overlay
+            overlayTitle.innerText = "Round Over!";
+            overlayIcon.className = "fa-solid fa-flag-checkered text-3xl";
+            
+            overlayContent.innerHTML = `
+                <div class="grid grid-cols-2 gap-4 text-center mb-4">
+                    <div class="bg-indigo-50 p-3 rounded-lg">
+                        <p class="text-xs text-indigo-500 font-bold uppercase">Score</p>
+                        <p class="text-2xl font-black text-indigo-700">${STATE.score}</p>
+                    </div>
+                    <div class="bg-slate-50 p-3 rounded-lg">
+                        <p class="text-xs text-slate-500 font-bold uppercase">Max Streak</p>
+                        <p class="text-2xl font-black text-slate-700">${STATE.streak}</p>
+                    </div>
+                </div>
+                <div class="flex justify-between text-sm px-2">
+                    <span class="text-green-600 font-bold"><i class="fa-solid fa-check mr-1"></i> ${STATE.correctCount} Correct</span>
+                    <span class="text-red-500 font-bold"><i class="fa-solid fa-xmark mr-1"></i> ${STATE.incorrectCount} Wrong</span>
+                </div>
+            `;
+            
+            startBtn.innerText = "Play Again";
+            overlay.classList.remove('opacity-0', 'pointer-events-none');
+        }
+
+        function spawnCard() {
             let icon;
             const futureTarget = STATE.activeCards.find(c => c.posIndex === 2);
 
-            // 50% chance to force a match with the upcoming target
+            // 50% chance match
             if (futureTarget && Math.random() < 0.5) {
                 icon = futureTarget.icon;
             } else {
-                // Otherwise pick a random icon that is NOT the match (to ensure strict 50% rate)
                 let pool = CONFIG.icons;
                 if (futureTarget) {
                     pool = pool.filter(i => i !== futureTarget.icon);
                 }
                 icon = pool[Math.floor(Math.random() * pool.length)];
             }
-            
-            // Fallback safety
             if (!icon) icon = CONFIG.icons[Math.floor(Math.random() * CONFIG.icons.length)];
 
             const cardEl = document.createElement('div');
-            
-            // Create DOM
-            // Start transparent (opacity-0) and scaled down slightly
             cardEl.className = 'card card-face-down card-hidden'; 
             cardEl.style.transform = `translate(${POSITIONS[0].left}px, ${POSITIONS[0].top}px) scale(0.8)`;
-            
-            // Inner content
             cardEl.innerHTML = `<i class="fa-solid ${icon} text-5xl text-indigo-600 hidden"></i>`; 
-
             cardsLayer.appendChild(cardEl);
 
             const cardObj = {
@@ -432,21 +481,15 @@
 
         function rotateCards() {
             playSound('slide');
-
             for (let i = STATE.activeCards.length - 1; i >= 0; i--) {
                 const card = STATE.activeCards[i];
                 card.posIndex++;
 
                 if (card.posIndex < POSITIONS.length) {
                     const pos = POSITIONS[card.posIndex];
-                    
-                    // Update CSS Transform
-                    // If posIndex is 0 (shouldnt happen in rotate), scale 0.8
-                    // If posIndex 1 (Visible), scale 1
-                    const scale = pos.visible ? 1 : 1; 
+                    const scale = 1; 
                     card.el.style.transform = `translate(${pos.left}px, ${pos.top}px) scale(${scale})`;
                     
-                    // Update Visual State (Face Up/Down/Opacity)
                     if (pos.visible) {
                         card.el.classList.remove('card-hidden');
                         card.el.style.opacity = '1';
@@ -459,9 +502,7 @@
                         card.el.className = 'card card-face-down';
                         card.el.querySelector('i').classList.add('hidden');
                     }
-
                 } else {
-                    // Out
                     card.el.style.opacity = '0';
                     setTimeout(() => { if(card.el.parentNode) card.el.remove(); }, 500);
                     STATE.activeCards.splice(i, 1);
@@ -470,16 +511,14 @@
         }
 
         function handleInput(userSaysMatch) {
-            if (!STATE.isInputActive) return;
+            if (!STATE.isInputActive || !STATE.isRoundActive) return;
             STATE.isInputActive = false;
             disableControls();
 
-            // Logic: Compare UR (Pos 1) vs LL (Pos 3)
             const cardUR = STATE.activeCards.find(c => c.posIndex === 1);
             const cardLL = STATE.activeCards.find(c => c.posIndex === 3);
 
             if (!cardUR || !cardLL) {
-                console.error("Missing cards in slots");
                 advanceTurn();
                 return;
             }
@@ -487,33 +526,51 @@
             const isMatch = cardUR.icon === cardLL.icon;
             const isCorrect = userSaysMatch === isMatch;
             
-            STATE.attempts++;
-            if (isCorrect) STATE.correctCount++;
-
             if (isCorrect) {
-                STATE.score += 100 + (STATE.correctCount * 10); // Streak bonus implicit
-                showFeedback("CORRECT", "text-green-500");
+                STATE.streak++;
+                STATE.correctCount++;
+                
+                // Scoring Logic:
+                // Base 10.
+                // Every 5 items (starting from item 5, 9, 13 etc per user example groups of 4) increments by 10.
+                // Streak 1-4: 10pts. Streak 5-8: 20pts. Streak 9-12: 30pts.
+                const increment = CONFIG.baseScore + (Math.floor((STATE.streak - 1) / 4) * 10);
+                
+                STATE.score += increment;
+                showFeedback(`+${increment}`, "text-green-500");
                 playSound('correct');
             } else {
-                showFeedback("WRONG", "text-red-500");
+                STATE.incorrectCount++;
+                STATE.streak = 0; // Reset streak
+                STATE.score -= CONFIG.penalty; // Penalty
+                
+                showFeedback(`-${CONFIG.penalty}`, "text-red-500");
                 playSound('wrong');
+                
+                // Screen shake effect
+                document.body.classList.add('bg-red-50');
+                setTimeout(() => document.body.classList.remove('bg-red-50'), 200);
             }
 
             updateHUD();
-            advanceTurn();
+            
+            // Check time safety (rare case input happens at 0)
+            if (STATE.timeLeft > 0) {
+                advanceTurn();
+            }
         }
 
         function advanceTurn() {
             setTimeout(() => {
+                if (!STATE.isRoundActive) return;
                 rotateCards();
                 spawnCard();
-                STATE.turn++;
                 updateHUD();
                 
                 setTimeout(() => {
-                    enableControls();
+                    if (STATE.isRoundActive) enableControls();
                 }, CONFIG.animDuration);
-            }, 400); 
+            }, 300); 
         }
 
         function enableControls() {
@@ -530,16 +587,11 @@
 
         function updateHUD() {
             scoreDisplay.innerText = STATE.score.toLocaleString();
-            turnDisplay.innerText = STATE.turn + 1;
+            timeDisplay.innerText = `${STATE.timeLeft}s`;
+            streakDisplay.innerText = STATE.streak;
             
-            const pct = STATE.attempts === 0 ? 100 : Math.round((STATE.correctCount / STATE.attempts) * 100);
-            accuracyPct.innerText = `${pct}%`;
-            accuracyFraction.innerText = `${STATE.correctCount}/${STATE.attempts}`;
-            
-            // Color code accuracy
-            if (pct >= 80) accuracyPct.className = "font-bold text-xl tabular-nums text-green-600";
-            else if (pct >= 50) accuracyPct.className = "font-bold text-xl tabular-nums text-amber-600";
-            else accuracyPct.className = "font-bold text-xl tabular-nums text-red-600";
+            if (STATE.timeLeft <= 5) timeDisplay.classList.add('text-red-600');
+            else timeDisplay.classList.remove('text-red-600');
         }
 
         function showFeedback(text, colorClass) {
@@ -561,13 +613,13 @@
             const t = document.getElementById('instruction-toast');
             t.innerText = msg;
             t.classList.remove('opacity-0');
+            setTimeout(() => t.classList.add('opacity-0'), 2000);
         }
 
-        document.getElementById('start-btn').addEventListener('click', initGame);
+        startBtn.addEventListener('click', initGame);
         btnYes.addEventListener('click', () => handleInput(true));
         btnNo.addEventListener('click', () => handleInput(false));
         
-        // Keyboard support
         window.addEventListener('keydown', (e) => {
             if (!STATE.isInputActive) return;
             if (e.key === 'ArrowRight') handleInput(true);
