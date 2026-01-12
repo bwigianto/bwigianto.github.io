@@ -1,0 +1,799 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Switchboard Operator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Inter:wght@400;800&display=swap');
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #0f172a; /* Slate-900 */
+            color: #e2e8f0;
+            overflow: hidden;
+            touch-action: manipulation;
+            user-select: none;
+        }
+
+        .mono { font-family: 'Share Tech Mono', monospace; }
+
+        /* Retro Panel Styling */
+        .panel-container {
+            background: #1e293b;
+            border: 4px solid #334155;
+            border-radius: 12px;
+            box-shadow: inset 0 0 40px rgba(0,0,0,0.8);
+            position: relative;
+        }
+
+        .bank-label {
+            font-family: 'Share Tech Mono', monospace;
+            text-transform: uppercase;
+            font-size: 0.65rem;
+            color: #94a3b8;
+            letter-spacing: 1px;
+            margin-bottom: 0.25rem;
+            border-bottom: 1px solid #334155;
+            padding-bottom: 2px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .bank-bg {
+            background: rgba(15, 23, 42, 0.6); /* Darker inner bg */
+            border: 1px solid #334155;
+            border-radius: 6px;
+            padding: 0.5rem;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: inset 0 2px 4px rgba(0,0,0,0.3);
+        }
+
+        .control-label {
+            margin-top: 0.25rem;
+            font-size: 0.65rem;
+            color: #64748b;
+            font-weight: bold;
+            font-family: 'Share Tech Mono', monospace;
+            text-align: center;
+        }
+
+        /* --- Bank A: Aircraft Toggles --- */
+        .toggle-switch {
+            position: relative;
+            width: 36px;
+            height: 64px;
+            background: linear-gradient(to right, #475569, #1e293b, #475569); /* Metal housing */
+            border-radius: 2px;
+            border: 1px solid #0f172a;
+            cursor: pointer;
+            display: flex;
+            justify-content: center;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.5);
+        }
+
+        /* The Nut at the base */
+        .toggle-switch::after {
+            content: '';
+            position: absolute;
+            top: 26px; /* Center vertical */
+            width: 24px;
+            height: 12px;
+            background: #94a3b8;
+            border-radius: 2px;
+            border: 1px solid #475569;
+            z-index: 1;
+        }
+
+        /* The Lever (Bat Handle) */
+        .toggle-handle {
+            position: absolute;
+            top: 2px; /* Up position */
+            width: 10px;
+            height: 34px;
+            background: linear-gradient(90deg, #e2e8f0, #94a3b8, #64748b); /* Silver metal */
+            border-radius: 4px;
+            transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+            z-index: 2;
+            box-shadow: 2px 2px 5px rgba(0,0,0,0.5);
+        }
+        
+        /* Tip of the lever */
+        .toggle-handle::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 6px;
+            background: #cbd5e1;
+            border-radius: 4px 4px 0 0;
+        }
+
+        .toggle-switch.active .toggle-handle {
+            top: 28px; /* Down position */
+            background: linear-gradient(90deg, #e2e8f0, #10b981, #059669); /* Green tint when active */
+        }
+        
+        .toggle-switch.active .toggle-handle::before {
+             background: #34d399; /* Green tip light */
+             box-shadow: 0 0 8px #34d399;
+        }
+
+
+        /* --- Bank B: Dials (Retained but compacted) --- */
+        .dial-container {
+            position: relative;
+            width: 60px;
+            height: 60px;
+        }
+        .dial {
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+            background: radial-gradient(circle, #334155 0%, #0f172a 100%);
+            border: 2px solid #475569;
+            position: relative;
+            transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+        }
+        .dial::after {
+            content: '';
+            position: absolute;
+            top: 4px;
+            left: 50%;
+            width: 4px;
+            height: 10px;
+            background: #e2e8f0;
+            transform: translateX(-50%);
+            border-radius: 2px;
+            box-shadow: 0 0 5px currentColor;
+        }
+        .dial-tick {
+            position: absolute;
+            width: 14px;
+            height: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.55rem;
+            color: #64748b;
+            cursor: pointer;
+            z-index: 10;
+        }
+        .dial-tick:hover { color: #fff; font-weight: bold; }
+
+
+        /* --- Bank C: Symbols (Compact 3x3) --- */
+        .symbol-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 6px;
+            padding: 2px;
+        }
+        .symbol-pad {
+            width: 38px;
+            height: 38px;
+            background: linear-gradient(to bottom right, #334155, #1e293b);
+            border: 1px solid #475569;
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.9rem;
+            color: #94a3b8;
+            cursor: pointer;
+            transition: all 0.1s;
+            box-shadow: 0 2px 0 #0f172a;
+        }
+        .symbol-pad:active { transform: translateY(2px); box-shadow: none; border-color: #cbd5e1; }
+        .symbol-pad.lit {
+            background: #e2e8f0;
+            color: #0f172a;
+            box-shadow: 0 0 10px rgba(226, 232, 240, 0.6);
+            border-color: #fff;
+        }
+
+
+        /* --- Bank D: Gear Shifters (Joysticks) --- */
+        .joystick-track {
+            width: 36px;
+            height: 70px; /* Reduced height */
+            background: #000; /* Deep black slot */
+            border-radius: 18px;
+            border: 2px solid #334155;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            box-shadow: inset 0 0 10px #000;
+        }
+        /* The stick connecting knob to base */
+        .joystick-shaft {
+            position: absolute;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 6px;
+            background: #64748b;
+            top: 20px;
+            height: 30px; /* visual length */
+            pointer-events: none;
+            transition: top 0.2s;
+        }
+        .joystick-knob {
+            position: absolute;
+            left: 2px; 
+            width: 28px;
+            height: 28px;
+            background: radial-gradient(circle at 35% 35%, #fca5a5, #b91c1c); /* Red knob look */
+            border-radius: 50%;
+            border: 1px solid #7f1d1d;
+            box-shadow: 0 3px 5px rgba(0,0,0,0.6);
+            transition: top 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            pointer-events: none;
+            z-index: 20;
+        }
+        
+        .joy-zone {
+            flex: 1;
+            cursor: pointer;
+            z-index: 10;
+        }
+        .joy-zone:hover { background: rgba(255,255,255,0.05); }
+
+        /* CRT Scanline Effect */
+        .crt-overlay {
+            background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.1) 50%);
+            background-size: 100% 4px;
+            pointer-events: none;
+        }
+        .dimmed { filter: brightness(0.4) grayscale(0.5); pointer-events: none; }
+        .wait-light {
+            width: 10px; height: 10px; border-radius: 50%; background: #334155; display: inline-block; margin-right: 6px;
+        }
+        .wait-light.active { background: #ef4444; box-shadow: 0 0 10px #ef4444; animation: blink 0.2s infinite; }
+        @keyframes blink { 0% {opacity:1} 50% {opacity:0.3} 100% {opacity:1} }
+    </style>
+</head>
+<body class="h-screen w-screen flex flex-col bg-slate-950">
+
+    <div class="absolute inset-0 crt-overlay z-50"></div>
+
+    <!-- HUD -->
+    <header class="flex-none p-3 flex justify-between items-center bg-slate-900 border-b border-slate-800 z-40">
+        <div class="flex items-center gap-4">
+            <a href="index.html" class="text-slate-500 hover:text-emerald-400 transition-colors">
+                <i class="fa-solid fa-power-off text-lg"></i>
+            </a>
+            <div class="flex flex-col">
+                <h1 class="font-bold text-lg text-emerald-500 tracking-wider uppercase mono">Switchboard_OS v9.6</h1>
+                <div class="flex items-center gap-2 text-[10px] text-slate-400">
+                    <span id="status-text">SYSTEM READY</span>
+                    <div id="wait-indicator" class="wait-light"></div>
+                </div>
+            </div>
+        </div>
+        <div class="flex gap-6 mono text-sm">
+            <div class="text-right">
+                <p class="text-slate-500 text-[10px]">SCORE</p>
+                <p id="score-display" class="text-xl text-emerald-400">0000</p>
+            </div>
+            <div class="text-right">
+                <p class="text-slate-500 text-[10px]">LEVEL</p>
+                <p id="level-display" class="text-xl text-emerald-400">01</p>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Console -->
+    <main class="flex-grow flex items-center justify-center p-2 relative overflow-hidden">
+        
+        <div id="control-board" class="panel-container p-4 w-full max-w-4xl grid grid-cols-1 md:grid-cols-2 gap-4 transition-all duration-500">
+            
+            <!-- LEFT COLUMN: Toggles & Gears -->
+            <div class="flex flex-col gap-3">
+                
+                <!-- Bank A: Toggles -->
+                <div class="flex-none">
+                    <div class="bank-label">
+                        <span>BANK A // TOGGLES</span>
+                        <i class="fa-solid fa-toggle-on text-slate-600"></i>
+                    </div>
+                    <div class="bank-bg flex justify-around items-end pt-2 pb-1">
+                        <!-- Toggles 1-5 -->
+                        <div class="flex flex-col items-center gap-1"><div class="toggle-switch" id="t1" onclick="handleToggle('t1')"><div class="toggle-handle"></div></div><span class="control-label">01</span></div>
+                        <div class="flex flex-col items-center gap-1"><div class="toggle-switch" id="t2" onclick="handleToggle('t2')"><div class="toggle-handle"></div></div><span class="control-label">02</span></div>
+                        <div class="flex flex-col items-center gap-1"><div class="toggle-switch" id="t3" onclick="handleToggle('t3')"><div class="toggle-handle"></div></div><span class="control-label">03</span></div>
+                        <div class="flex flex-col items-center gap-1"><div class="toggle-switch" id="t4" onclick="handleToggle('t4')"><div class="toggle-handle"></div></div><span class="control-label">04</span></div>
+                        <div class="flex flex-col items-center gap-1"><div class="toggle-switch" id="t5" onclick="handleToggle('t5')"><div class="toggle-handle"></div></div><span class="control-label">05</span></div>
+                    </div>
+                </div>
+
+                <!-- Bank D: Gears (Joysticks) -->
+                <div class="flex-grow">
+                    <div class="bank-label">
+                        <span>BANK D // GEARS</span>
+                        <i class="fa-solid fa-gears text-slate-600"></i>
+                    </div>
+                    <div class="bank-bg flex justify-around items-center">
+                        <!-- 4 Gear Shifters labeled A-D -->
+                        <div class="flex flex-col items-center gap-1">
+                            <div class="joystick-track" id="jA">
+                                <div class="joy-zone" onclick="handleJoystick('jA', 'fwd')"></div>
+                                <div class="joy-zone" onclick="handleJoystick('jA', 'back')"></div>
+                                <div class="joystick-shaft" style="top: 20px;"></div>
+                                <div class="joystick-knob" style="top: 20px;"></div>
+                            </div>
+                            <span class="control-label">G-A</span>
+                        </div>
+                        <div class="flex flex-col items-center gap-1">
+                            <div class="joystick-track" id="jB">
+                                <div class="joy-zone" onclick="handleJoystick('jB', 'fwd')"></div>
+                                <div class="joy-zone" onclick="handleJoystick('jB', 'back')"></div>
+                                <div class="joystick-shaft" style="top: 20px;"></div>
+                                <div class="joystick-knob" style="top: 20px;"></div>
+                            </div>
+                            <span class="control-label">G-B</span>
+                        </div>
+                        <div class="flex flex-col items-center gap-1">
+                            <div class="joystick-track" id="jC">
+                                <div class="joy-zone" onclick="handleJoystick('jC', 'fwd')"></div>
+                                <div class="joy-zone" onclick="handleJoystick('jC', 'back')"></div>
+                                <div class="joystick-shaft" style="top: 20px;"></div>
+                                <div class="joystick-knob" style="top: 20px;"></div>
+                            </div>
+                            <span class="control-label">G-C</span>
+                        </div>
+                        <div class="flex flex-col items-center gap-1">
+                            <div class="joystick-track" id="jD">
+                                <div class="joy-zone" onclick="handleJoystick('jD', 'fwd')"></div>
+                                <div class="joy-zone" onclick="handleJoystick('jD', 'back')"></div>
+                                <div class="joystick-shaft" style="top: 20px;"></div>
+                                <div class="joystick-knob" style="top: 20px;"></div>
+                            </div>
+                            <span class="control-label">G-D</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- RIGHT COLUMN: Dials & Symbols -->
+            <div class="flex flex-col gap-3">
+                
+                <!-- Bank B: Dials -->
+                <div class="flex-none">
+                    <div class="bank-label">
+                        <span>BANK B // FREQ</span>
+                        <i class="fa-solid fa-compact-disc text-slate-600"></i>
+                    </div>
+                    <div class="bank-bg grid grid-cols-2 gap-x-2 gap-y-1 place-items-center">
+                        <!-- Dials -->
+                        <div class="flex flex-col items-center">
+                            <div class="dial-container relative" id="d-red">
+                                <div class="dial text-red-500" style="transform: rotate(-144deg);"></div>
+                                <div class="dial-tick" style="top: 55%; left: -8px;" onclick="handleDial('red', 1)">1</div>
+                                <div class="dial-tick" style="top: 10%; left: 0px;" onclick="handleDial('red', 2)">2</div>
+                                <div class="dial-tick" style="top: -12px; left: 22px;" onclick="handleDial('red', 3)">3</div>
+                                <div class="dial-tick" style="top: 10%; right: 0px;" onclick="handleDial('red', 4)">4</div>
+                                <div class="dial-tick" style="top: 55%; right: -8px;" onclick="handleDial('red', 5)">5</div>
+                            </div>
+                            <span class="control-label text-red-400 mt-1">RED</span>
+                        </div>
+                        <div class="flex flex-col items-center">
+                            <div class="dial-container relative" id="d-blue">
+                                <div class="dial text-blue-500" style="transform: rotate(-144deg);"></div>
+                                <div class="dial-tick" style="top: 55%; left: -8px;" onclick="handleDial('blue', 1)">1</div>
+                                <div class="dial-tick" style="top: 10%; left: 0px;" onclick="handleDial('blue', 2)">2</div>
+                                <div class="dial-tick" style="top: -12px; left: 22px;" onclick="handleDial('blue', 3)">3</div>
+                                <div class="dial-tick" style="top: 10%; right: 0px;" onclick="handleDial('blue', 4)">4</div>
+                                <div class="dial-tick" style="top: 55%; right: -8px;" onclick="handleDial('blue', 5)">5</div>
+                            </div>
+                            <span class="control-label text-blue-400 mt-1">BLUE</span>
+                        </div>
+                        <div class="flex flex-col items-center">
+                            <div class="dial-container relative" id="d-green">
+                                <div class="dial text-emerald-500" style="transform: rotate(-144deg);"></div>
+                                <div class="dial-tick" style="top: 55%; left: -8px;" onclick="handleDial('green', 1)">1</div>
+                                <div class="dial-tick" style="top: 10%; left: 0px;" onclick="handleDial('green', 2)">2</div>
+                                <div class="dial-tick" style="top: -12px; left: 22px;" onclick="handleDial('green', 3)">3</div>
+                                <div class="dial-tick" style="top: 10%; right: 0px;" onclick="handleDial('green', 4)">4</div>
+                                <div class="dial-tick" style="top: 55%; right: -8px;" onclick="handleDial('green', 5)">5</div>
+                            </div>
+                            <span class="control-label text-emerald-400 mt-1">GREEN</span>
+                        </div>
+                        <div class="flex flex-col items-center">
+                            <div class="dial-container relative" id="d-yellow">
+                                <div class="dial text-yellow-500" style="transform: rotate(-144deg);"></div>
+                                <div class="dial-tick" style="top: 55%; left: -8px;" onclick="handleDial('yellow', 1)">1</div>
+                                <div class="dial-tick" style="top: 10%; left: 0px;" onclick="handleDial('yellow', 2)">2</div>
+                                <div class="dial-tick" style="top: -12px; left: 22px;" onclick="handleDial('yellow', 3)">3</div>
+                                <div class="dial-tick" style="top: 10%; right: 0px;" onclick="handleDial('yellow', 4)">4</div>
+                                <div class="dial-tick" style="top: 55%; right: -8px;" onclick="handleDial('yellow', 5)">5</div>
+                            </div>
+                            <span class="control-label text-yellow-400 mt-1">YEL</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Bank C: Symbols -->
+                <div class="flex-grow">
+                    <div class="bank-label">
+                        <span>BANK C // SYMBOLS</span>
+                        <i class="fa-solid fa-shapes text-slate-600"></i>
+                    </div>
+                    <div class="bank-bg flex items-center justify-center">
+                        <div class="symbol-grid">
+                            <!-- 9 Symbols -->
+                            <div class="symbol-pad" id="sym-triangle" onclick="handleSymbol('triangle')"><i class="fa-solid fa-play fa-rotate-270"></i></div>
+                            <div class="symbol-pad" id="sym-square" onclick="handleSymbol('square')"><i class="fa-solid fa-square"></i></div>
+                            <div class="symbol-pad" id="sym-circle" onclick="handleSymbol('circle')"><i class="fa-solid fa-circle"></i></div>
+                            
+                            <div class="symbol-pad" id="sym-star" onclick="handleSymbol('star')"><i class="fa-solid fa-star"></i></div>
+                            <div class="symbol-pad" id="sym-heart" onclick="handleSymbol('heart')"><i class="fa-solid fa-heart"></i></div>
+                            <div class="symbol-pad" id="sym-bolt" onclick="handleSymbol('bolt')"><i class="fa-solid fa-bolt"></i></div>
+                            
+                            <div class="symbol-pad" id="sym-diamond" onclick="handleSymbol('diamond')"><i class="fa-solid fa-diamond"></i></div>
+                            <div class="symbol-pad" id="sym-moon" onclick="handleSymbol('moon')"><i class="fa-solid fa-moon"></i></div>
+                            <div class="symbol-pad" id="sym-cloud" onclick="handleSymbol('cloud')"><i class="fa-solid fa-cloud"></i></div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+
+        </div>
+
+        <!-- Feedback Overlay -->
+        <div id="feedback" class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none opacity-0 transition-opacity duration-300 z-50">
+            <h2 class="text-4xl md:text-6xl font-black text-emerald-400 mono tracking-tighter" style="text-shadow: 0 0 20px rgba(16, 185, 129, 0.5)">SEQUENCE OK</h2>
+        </div>
+
+        <!-- Start/Game Over Overlay -->
+        <div id="overlay" class="absolute inset-0 bg-slate-900/95 z-50 flex flex-col items-center justify-center p-8 backdrop-blur-sm">
+            <div class="border border-emerald-500/30 bg-slate-800 p-8 rounded-lg max-w-md w-full text-center shadow-2xl shadow-emerald-900/20">
+                <i class="fa-solid fa-headset text-5xl text-emerald-500 mb-6"></i>
+                <h2 id="overlay-title" class="text-3xl font-bold text-white mb-2 mono">INITIALIZE OPERATOR</h2>
+                <p id="overlay-msg" class="text-slate-400 mb-8 text-sm leading-relaxed">
+                    Listen to the commands. Wait for the signal. Execute.
+                    <br><br>
+                    <span class="text-xs text-slate-500 font-mono">
+                        <i class="fa-solid fa-volume-high mr-1"></i> Audio Required
+                    </span>
+                </p>
+                <button id="start-btn" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-4 px-6 rounded transition-colors mono tracking-widest text-lg">
+                    CONNECT
+                </button>
+            </div>
+        </div>
+
+    </main>
+
+    <script>
+        // --- Game Config ---
+        const CONFIG = {
+            waitPhaseDuration: 1500,
+        };
+
+        const STATE = {
+            level: 1,
+            score: 0,
+            isPlaying: false,
+            expectedSequence: [],
+            inputSequence: [],
+            isListening: false,
+            isWaiting: false
+        };
+
+        // --- DOM Elements ---
+        const boardEl = document.getElementById('control-board');
+        const overlay = document.getElementById('overlay');
+        const overlayTitle = document.getElementById('overlay-title');
+        const overlayMsg = document.getElementById('overlay-msg');
+        const startBtn = document.getElementById('start-btn');
+        const scoreDisplay = document.getElementById('score-display');
+        const levelDisplay = document.getElementById('level-display');
+        const statusText = document.getElementById('status-text');
+        const waitLight = document.getElementById('wait-indicator');
+        const feedbackEl = document.getElementById('feedback');
+
+        // --- Audio Context for SFX ---
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        const audioCtx = new AudioContext();
+
+        function playTone(freq, type = 'sine', duration = 0.1) {
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            
+            osc.type = type;
+            osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+            gain.gain.setValueAtTime(0.05, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+            
+            osc.start();
+            osc.stop(audioCtx.currentTime + duration);
+        }
+
+        // --- Improved Speech Synthesis ---
+        let selectedVoice = null;
+
+        function loadVoices() {
+            const voices = window.speechSynthesis.getVoices();
+            // Strict selection for natural English voices
+            // Prioritize Google US, Premium, or Samantha (Mac)
+//             selectedVoice = voices.find(v => v.name === 'Google US English') || 
+//                             voices.find(v => v.name.includes('Premium')) ||
+//                             voices.find(v => v.name === 'English (West Midlands)+female5') ||
+//                             voices.find(v => v.lang === 'en-US' && !v.name.includes('Microsoft')) || // Microsoft voices can be laggy
+//                             voices.find(v => v.lang === 'en-US') ||
+//                             voices[0];
+            filteredVoices = voices.filter(v => v.name.includes('English') && 
+                //v.name.includes('America') && 
+                //v.name.includes('female2') && 
+           //     v.name.includes('Paul') && 
+                v.lang === 'en-US'
+            );
+
+            selectedVoice = filteredVoices[0];
+            
+            console.log("Selected Voice:", selectedVoice ? selectedVoice.name : "Default");
+        }
+
+        // Ensure voices load
+        if ('speechSynthesis' in window) {
+            window.speechSynthesis.onvoiceschanged = loadVoices;
+        }
+
+        function speak(text, callback) {
+            if ('speechSynthesis' in window) {
+                window.speechSynthesis.cancel(); // Reset
+
+                const utterance = new SpeechSynthesisUtterance(text);
+                
+                // Retry voice load if empty
+                if (!selectedVoice) loadVoices();
+                if (selectedVoice) utterance.voice = selectedVoice;
+                
+                utterance.lang = 'en-US'; 
+                utterance.rate = 0.9; // Slower for clarity
+                utterance.pitch = 1.0; 
+                utterance.volume = 1.0; // Max volume
+
+                utterance.onend = () => {
+                    if (callback) callback();
+                };
+                
+                window.speechSynthesis.speak(utterance);
+            } else {
+                console.error("TTS not supported");
+                if (callback) callback();
+            }
+        }
+
+        // --- Logic Generation ---
+        const rnd = (arr) => arr[Math.floor(Math.random() * arr.length)];
+        const rndInt = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
+
+        function generateLevelLogic(level) {
+            let sequence = [];
+            let scripts = [];
+            
+            const count = Math.min(2 + Math.floor(level/2), 5);
+
+            for(let i=0; i<count; i++) {
+                const type = Math.random();
+                
+                if (type < 0.25) { 
+                    // TOGGLE
+                    const id = rndInt(1, 5);
+                    sequence.push(`t${id}`);
+                    scripts.push(`Toggle ${id}`);
+                } 
+                else if (type < 0.5) { 
+                    // SYMBOL
+                    const syms = ['triangle', 'square', 'circle', 'star', 'heart', 'bolt', 'diamond', 'moon', 'cloud'];
+                    const s = rnd(syms);
+                    sequence.push(s);
+                    scripts.push(`Tap the ${s}`);
+                } 
+                else if (type < 0.75) { 
+                    // DIAL
+                    const colors = ['red', 'blue', 'green', 'yellow'];
+                    const c = rnd(colors);
+                    const val = rndInt(1, 5);
+                    sequence.push(`${c}:${val}`);
+                    scripts.push(`Set ${c} dial to ${val}`);
+                } 
+                else { 
+                    // GEAR/JOYSTICK (Letter based)
+                    const jLabels = ['A', 'B', 'C', 'D'];
+                    const jId = rnd(jLabels);
+                    const dir = Math.random() > 0.5 ? 'fwd' : 'back';
+                    const dirWord = dir === 'fwd' ? 'Forward' : 'Back';
+                    sequence.push(`j${jId}:${dir}`);
+                    scripts.push(`Shift Gear ${jId} ${dirWord}`);
+                }
+            }
+
+            return { 
+                sequence: sequence, 
+                script: scripts.join(". Then, ") + "." 
+            };
+        }
+
+        // --- Interaction Handlers ---
+
+        function handleInputCheck(inputCode) {
+            if (STATE.isListening || STATE.isWaiting) {
+                playTone(100, 'sawtooth', 0.2);
+                statusText.innerText = "WAIT FOR SIGNAL!";
+                statusText.classList.remove('text-emerald-400');
+                statusText.classList.add('text-red-500');
+                return;
+            }
+
+            // Valid input
+            playTone(600, 'sine', 0.05);
+            STATE.inputSequence.push(inputCode);
+
+            // Validate immediately
+            const idx = STATE.inputSequence.length - 1;
+            const expected = STATE.expectedSequence[idx];
+
+            if (inputCode !== expected) {
+                failRound();
+            } else if (STATE.inputSequence.length === STATE.expectedSequence.length) {
+                passRound();
+            }
+        }
+
+        function handleToggle(id) {
+            const el = document.getElementById(id);
+            el.classList.toggle('active');
+            handleInputCheck(id);
+        }
+
+        function handleSymbol(name) {
+            const el = document.getElementById(`sym-${name}`);
+            el.classList.add('lit');
+            setTimeout(() => el.classList.remove('lit'), 150);
+            handleInputCheck(name);
+        }
+
+        function handleDial(color, value) {
+            const angles = {1: -144, 2: -72, 3: 0, 4: 72, 5: 144};
+            const el = document.querySelector(`#d-${color} .dial`);
+            el.style.transform = `rotate(${angles[value]}deg)`;
+            handleInputCheck(`${color}:${value}`);
+        }
+
+        function handleJoystick(id, dir) {
+            const handle = document.querySelector(`#${id} .joystick-knob`);
+            const shaft = document.querySelector(`#${id} .joystick-shaft`);
+            
+            // Visual Move (Top: 4px, Neutral: 20px, Bot: 36px)
+            if (dir === 'fwd') {
+                handle.style.top = '4px';
+                shaft.style.top = '4px';
+            } else {
+                handle.style.top = '36px';
+                shaft.style.top = '36px';
+            }
+            
+            // Auto-return
+            setTimeout(() => {
+                handle.style.top = '20px';
+                shaft.style.top = '20px';
+            }, 250);
+
+            handleInputCheck(`${id}:${dir}`);
+        }
+
+        // --- Game Flow ---
+
+        function initGame() {
+            STATE.level = 1;
+            STATE.score = 0;
+            updateHUD();
+            overlay.classList.add('hidden');
+            loadVoices();
+            startRound();
+        }
+
+        function resetBoardVisuals() {
+            document.querySelectorAll('.toggle-switch').forEach(el => el.classList.remove('active'));
+            document.querySelectorAll('.dial').forEach(el => el.style.transform = 'rotate(-144deg)');
+            document.querySelectorAll('.joystick-knob').forEach(el => el.style.top = '20px');
+            document.querySelectorAll('.joystick-shaft').forEach(el => el.style.top = '20px');
+        }
+
+        function startRound() {
+            resetBoardVisuals();
+            STATE.inputSequence = [];
+            
+            const levelData = generateLevelLogic(STATE.level);
+            STATE.expectedSequence = levelData.sequence;
+
+            // LISTEN PHASE
+            STATE.isListening = true;
+            boardEl.classList.add('dimmed');
+            statusText.innerText = "INCOMING TRANSMISSION...";
+            statusText.classList.remove('text-red-500', 'text-white', 'text-amber-500');
+            statusText.classList.add('text-emerald-400');
+
+            // Slight delay before speaking
+            setTimeout(() => {
+                speak(levelData.script, () => {
+                    // WAIT PHASE
+                    STATE.isListening = false;
+                    STATE.isWaiting = true;
+                    statusText.innerText = "BUFFERING...";
+                    statusText.classList.remove('text-emerald-400');
+                    statusText.classList.add('text-amber-500');
+                    waitLight.classList.add('active');
+
+                    setTimeout(() => {
+                        // ACTION PHASE
+                        STATE.isWaiting = false;
+                        waitLight.classList.remove('active');
+                        boardEl.classList.remove('dimmed');
+                        statusText.innerText = "EXECUTE SEQUENCE";
+                        statusText.classList.remove('text-amber-500');
+                        statusText.classList.add('text-white');
+                        playTone(800, 'square', 0.2);
+                    }, CONFIG.waitPhaseDuration);
+                });
+            }, 600);
+        }
+
+        function passRound() {
+            STATE.score += 100 * STATE.level;
+            STATE.level++;
+            updateHUD();
+            playTone(800, 'sine', 0.1);
+            showFeedback("SEQUENCE VERIFIED", "text-emerald-400");
+            setTimeout(startRound, 2000);
+        }
+
+        function failRound() {
+            playTone(150, 'sawtooth', 0.5);
+            showFeedback("CRITICAL ERROR", "text-red-500");
+            boardEl.classList.add('dimmed');
+            setTimeout(showGameOver, 1500);
+        }
+
+        function updateHUD() {
+            scoreDisplay.innerText = STATE.score.toString().padStart(4, '0');
+            levelDisplay.innerText = STATE.level.toString().padStart(2, '0');
+        }
+
+        function showFeedback(text, colorClass) {
+            const fb = document.getElementById('feedback');
+            fb.innerHTML = `<h2 class="text-4xl md:text-6xl font-black ${colorClass} mono tracking-tighter" style="text-shadow: 0 0 20px currentColor">${text}</h2>`;
+            fb.classList.remove('opacity-0');
+            setTimeout(() => fb.classList.add('opacity-0'), 1000);
+        }
+
+        function showGameOver() {
+            overlayTitle.innerText = "CONNECTION LOST";
+            overlayMsg.innerText = `Final Score: ${STATE.score}\nLevel Reached: ${STATE.level}`;
+            startBtn.innerText = "REBOOT SYSTEM";
+            overlay.classList.remove('hidden');
+        }
+
+        startBtn.addEventListener('click', () => {
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            speak("", () => {}); 
+            initGame();
+        });
+
+    </script>
+</body>
+</html>
