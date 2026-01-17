@@ -30,7 +30,7 @@
             justify-content: center;
             padding: 0.5rem;
             position: relative;
-            z-index: 10; /* Ensure cards are clickable */
+            z-index: 10;
         }
 
         .card:hover {
@@ -42,6 +42,15 @@
             border-color: #3b82f6; /* Blue-500 */
             background-color: #eff6ff; /* Blue-50 */
             transform: scale(0.95);
+        }
+
+        .card.missed-set-highlight {
+            border-color: #f59e0b !important; /* Amber-500 */
+            background-color: #fffbeb !important; /* Amber-50 */
+            box-shadow: 0 0 20px rgba(245, 158, 11, 0.4) !important;
+            transform: scale(1.05);
+            z-index: 20;
+            animation: pulse-gold 1s infinite;
         }
 
         /* Animations */
@@ -66,9 +75,14 @@
             animation: popOut 0.3s ease-in forwards;
         }
 
+        @keyframes pulse-gold {
+            0%, 100% { box-shadow: 0 0 20px rgba(245, 158, 11, 0.4); border-color: #f59e0b; }
+            50% { box-shadow: 0 0 30px rgba(245, 158, 11, 0.7); border-color: #d97706; }
+        }
+
         /* SVG Patterns */
         svg { width: 100%; height: 100%; }
-        
+
         /* Grid Layout */
         #game-board {
             display: grid;
@@ -120,17 +134,17 @@
 
     <!-- Main Game Area -->
     <main class="flex-grow flex flex-col items-center justify-center relative p-4 overflow-y-auto">
-        
+
         <div id="game-board">
             <!-- Cards injected by JS -->
         </div>
 
         <!-- Start Overlay -->
-        <div id="overlay" class="absolute inset-0 z-50 flex flex-col items-center justify-center backdrop-blur-md bg-slate-900/80 text-white p-8">
+        <div id="overlay" class="absolute inset-0 z-50 flex flex-col items-center justify-center backdrop-blur-md bg-slate-900/80 text-white p-8 transition-colors duration-500">
             <div class="mb-6 inline-flex items-center justify-center w-20 h-20 rounded-full bg-rose-500/20 text-rose-300 mb-4 ring-2 ring-rose-500/50">
                 <i class="fa-solid fa-layer-group text-3xl"></i>
             </div>
-            
+
             <h2 id="overlay-title" class="text-3xl font-black mb-2 text-white">Set Match</h2>
             <div id="overlay-content" class="text-slate-300 mb-8 text-sm text-center max-w-sm">
                 <p class="mb-2">Find sets of 3 cards where each feature is either <strong>all the same</strong> or <strong>all different</strong>.</p>
@@ -141,7 +155,7 @@
                     <li>Shading: Solid, Striped, Open</li>
                 </ul>
             </div>
-            
+
             <button id="action-btn" class="w-full max-w-xs bg-rose-600 hover:bg-rose-500 text-white font-bold py-4 px-6 rounded-xl transition-all hover:scale-105 active:scale-95 shadow-lg shadow-rose-900/50">
                 Start Game
             </button>
@@ -235,6 +249,13 @@
                 gain.gain.linearRampToValueAtTime(0, now + 0.5);
                 osc.start(now);
                 osc.stop(now + 0.5);
+            } else if (type === 'reveal') {
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(600, now);
+                gain.gain.setValueAtTime(0.1, now);
+                gain.gain.linearRampToValueAtTime(0, now + 0.5);
+                osc.start(now);
+                osc.stop(now + 0.5);
             }
         }
 
@@ -275,62 +296,73 @@
             score = 0;
             timeLeft = 60;
             selectedIndices = [];
-            
+
             // Deal initial 12 cards
             for (let i = 0; i < 12; i++) {
                 if (deck.length > 0) board.push(deck.pop());
             }
 
-            // Ensure at least one set exists initially
-            while (!boardContainsSet(board) && deck.length > 0) {
-                // Add 3 more cards
-                for (let i = 0; i < 3; i++) {
-                    if (deck.length > 0) board.push(deck.pop());
-                }
-            }
+            ensureSetExists();
 
             renderBoard();
             updateHUD();
             startTimer();
             isGameActive = true;
             overlay.classList.add('hidden');
+
+            // Reset overlay transparency and blur for next time
+            overlay.classList.remove('bg-slate-900/20');
+            overlay.classList.add('bg-slate-900/80');
+
+            // Reset blur
+            overlay.classList.remove('backdrop-blur-sm');
+            overlay.classList.add('backdrop-blur-md');
+        }
+
+        function ensureSetExists() {
+            while (!findSetIndices(board) && deck.length > 0) {
+                // Add 3 more cards
+                for (let i = 0; i < 3; i++) {
+                    if (deck.length > 0) board.push(deck.pop());
+                }
+            }
         }
 
         function isSet(c1, c2, c3) {
             if (!c1 || !c2 || !c3) return false;
-            
+
             const features = ['color', 'shape', 'number', 'shading'];
             for (let f of features) {
                 const v1 = c1[f];
                 const v2 = c2[f];
                 const v3 = c3[f];
-                
+
                 // All same OR all different
                 const allSame = (v1 === v2 && v2 === v3);
                 const allDiff = (v1 !== v2 && v1 !== v3 && v2 !== v3);
-                
+
                 if (!allSame && !allDiff) return false;
             }
             return true;
         }
 
-        function boardContainsSet(currentBoard) {
+        function findSetIndices(currentBoard) {
             // Brute force check all combinations
             for (let i = 0; i < currentBoard.length; i++) {
                 for (let j = i + 1; j < currentBoard.length; j++) {
                     for (let k = j + 1; k < currentBoard.length; k++) {
                         if (isSet(currentBoard[i], currentBoard[j], currentBoard[k])) {
-                            return true;
+                            return [i, j, k];
                         }
                     }
                 }
             }
-            return false;
+            return null;
         }
 
         function handleCardClick(index) {
             if (!isGameActive) return;
-            
+
             const idxInSelection = selectedIndices.indexOf(index);
 
             if (idxInSelection > -1) {
@@ -344,7 +376,7 @@
                     selectedIndices.push(index);
                     renderSelection();
                     playSound('select');
-                    
+
                     if (selectedIndices.length === 3) {
                         setTimeout(checkSelection, 100);
                     }
@@ -363,10 +395,10 @@
                 score++;
                 playSound('match');
                 showFeedback("SET FOUND!", "text-green-400");
-                
+
                 // Remove cards from board
                 const indicesToRemove = [i1, i2, i3].sort((a, b) => b - a);
-                
+
                 if (board.length > 12 || deck.length === 0) {
                      indicesToRemove.forEach(idx => board.splice(idx, 1));
                 } else {
@@ -374,16 +406,12 @@
                         if (deck.length > 0) {
                             board[idx] = deck.pop();
                         } else {
-                            board.splice(idx, 1); 
+                            board.splice(idx, 1);
                         }
                     });
                 }
 
-                while (!boardContainsSet(board) && deck.length > 0) {
-                    for (let i = 0; i < 3; i++) {
-                        if (deck.length > 0) board.push(deck.pop());
-                    }
-                }
+                ensureSetExists();
 
                 selectedIndices = [];
                 renderBoard();
@@ -393,7 +421,7 @@
                 // Invalid set
                 playSound('error');
                 showFeedback("NOT A SET", "text-rose-400");
-                
+
                 selectedIndices.forEach(idx => {
                     const el = document.getElementById(`card-${idx}`);
                     if (el) el.classList.add('shake-anim');
@@ -412,39 +440,39 @@
 
         function renderBoard() {
             boardEl.innerHTML = '';
-            
+
             board.forEach((card, index) => {
                 const el = document.createElement('div');
                 el.id = `card-${index}`;
                 el.className = 'card';
                 // Using addEventListener is slightly cleaner for event management
                 el.addEventListener('click', () => handleCardClick(index));
-                
+
                 // Render shapes
                 const shapeContent = renderShape(card);
                 const contentWrapper = document.createElement('div');
-                contentWrapper.className = 'flex flex-col gap-1 md:gap-2 items-center justify-center w-full h-full pointer-events-none'; // Added pointer-events-none
-                
+                contentWrapper.className = 'flex flex-col gap-1 md:gap-2 items-center justify-center w-full h-full pointer-events-none';
+
                 for (let i = 0; i < NUMBERS[card.number]; i++) {
                     const shapeWrapper = document.createElement('div');
                     shapeWrapper.style.width = '100%';
-                    shapeWrapper.style.height = '30%'; 
+                    shapeWrapper.style.height = '30%';
                     shapeWrapper.style.maxHeight = '40px';
                     shapeWrapper.innerHTML = shapeContent;
                     contentWrapper.appendChild(shapeWrapper);
                 }
-                
+
                 el.appendChild(contentWrapper);
                 boardEl.appendChild(el);
             });
-            
+
             renderSelection();
         }
 
         function renderSelection() {
             const cards = document.querySelectorAll('.card');
             cards.forEach(c => c.classList.remove('selected'));
-            
+
             selectedIndices.forEach(idx => {
                 const el = document.getElementById(`card-${idx}`);
                 if (el) el.classList.add('selected');
@@ -455,16 +483,16 @@
             const color = COLORS[card.color];
             const shape = SHAPES[card.shape];
             const shading = SHADINGS[card.shading];
-            
+
             let fill = 'transparent';
             let stroke = color;
-            
+
             if (shading === 'solid') {
                 fill = color;
             } else if (shading === 'striped') {
                 fill = `url(#${STRIPE_IDS[card.color]})`;
             }
-            
+
             // Smoother Squiggle and other shapes
             if (shape === 'oval') {
                 return `<svg viewBox="0 0 100 50" preserveAspectRatio="xMidYMid meet">
@@ -475,9 +503,9 @@
                     <polygon points="5,25 50,5 95,25 50,45" fill="${fill}" stroke="${stroke}" stroke-width="4" stroke-linejoin="round"/>
                 </svg>`;
             } else if (shape === 'squiggle') {
-                // New non-intersecting peanut/wave shape
+                // Thicker, rounded tilde-like shape
                 return `<svg viewBox="0 0 100 50" preserveAspectRatio="xMidYMid meet">
-                    <path d="M15,25 Q25,10 40,20 T70,20 Q85,10 90,25 Q85,45 65,35 T30,35 Q15,45 15,25 Z" fill="${fill}" stroke="${stroke}" stroke-width="4" stroke-linejoin="round"/>
+                    <path d="M10,15 Q30,0 50,15 T90,15 Q98,25 90,35 Q70,50 50,35 T10,35 Q2,25 10,15 Z" fill="${fill}" stroke="${stroke}" stroke-width="4" stroke-linejoin="round"/>
                 </svg>`;
             }
         }
@@ -487,13 +515,13 @@
         function startTimer() {
             if (timerInterval) clearInterval(timerInterval);
             updateHUD();
-            
+
             timerInterval = setInterval(() => {
                 if (!isGameActive) return;
-                
+
                 timeLeft--;
                 updateHUD();
-                
+
                 if (timeLeft <= 0) {
                     endGame();
                 }
@@ -503,8 +531,32 @@
         function endGame() {
             clearInterval(timerInterval);
             isGameActive = false;
+
+            // Highlight a valid set if one exists
+            const validSetIndices = findSetIndices(board);
+
+            if (validSetIndices) {
+                // Show hint
+                showFeedback("HERE'S A SET", "text-amber-400");
+                playSound('reveal');
+
+                validSetIndices.forEach(idx => {
+                    const el = document.getElementById(`card-${idx}`);
+                    if (el) el.classList.add('missed-set-highlight');
+                });
+
+                // Wait 3 seconds
+                setTimeout(() => {
+                    showScoreModal();
+                }, 3000);
+            } else {
+                // No set found (rare/impossible if logic holds), just show modal
+                showScoreModal();
+            }
+        }
+
+        function showScoreModal() {
             playSound('end');
-            
             overlayTitle.innerText = "Time's Up!";
             overlayContent.innerHTML = `
                 <div class="flex flex-col items-center">
@@ -513,6 +565,15 @@
                 </div>
             `;
             actionBtn.innerText = "Play Again";
+
+            // Make overlay transparent for end game state
+            overlay.classList.remove('bg-slate-900/80');
+            overlay.classList.add('bg-slate-900/20');
+
+            // Reduce blur
+            overlay.classList.remove('backdrop-blur-md');
+            overlay.classList.add('backdrop-blur-sm');
+
             overlay.classList.remove('hidden');
         }
 
@@ -526,7 +587,7 @@
         function showFeedback(text, colorClass) {
             feedbackEl.innerText = text;
             feedbackEl.className = `absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 pointer-events-none z-40 font-black text-4xl drop-shadow-lg transition-all duration-300 ${colorClass} whitespace-nowrap`;
-            
+
             requestAnimationFrame(() => {
                 feedbackEl.style.opacity = '1';
                 feedbackEl.style.transform = 'translate(-50%, -50%) scale(1.2)';
