@@ -41,9 +41,10 @@
     <!-- Header / HUD -->
     <header class="flex-none p-4 flex justify-between items-center bg-white shadow-sm z-20">
         <div class="flex items-center gap-4">
-            <a href="index.html" class="flex items-center justify-center w-10 h-10 rounded-full hover:bg-slate-100 text-slate-400 hover:text-purple-600 transition-colors" title="Back to Menu">
+            <!-- UPDATED: Back Button sends message to parent -->
+            <button onclick="window.parent.postMessage({type: 'EXIT_GAME'}, '*')" class="flex items-center justify-center w-10 h-10 rounded-full hover:bg-slate-100 text-slate-400 hover:text-purple-600 transition-colors" title="Back to Menu">
                 <i class="fa-solid fa-house"></i>
-            </a>
+            </button>
             <div class="flex items-center gap-3 pl-4 border-l border-slate-200">
                 <div class="bg-purple-500 text-white p-2 rounded-lg">
                     <i class="fa-solid fa-shapes text-xl"></i>
@@ -69,21 +70,21 @@
 
     <!-- Main Game Area -->
     <main class="flex-grow flex flex-col items-center justify-center relative p-4">
-        
+
         <div id="game-container" class="relative">
             <canvas id="game-canvas"></canvas>
-            
+
             <!-- Start Overlay -->
             <div id="overlay" class="absolute inset-0 z-50 flex flex-col items-center justify-center overlay text-white p-8">
                 <div class="mb-6 inline-flex items-center justify-center w-20 h-20 rounded-full bg-purple-500/20 text-purple-300 mb-4 ring-2 ring-purple-500/50">
                     <i class="fa-solid fa-eye text-3xl"></i>
                 </div>
-                
+
                 <h2 id="overlay-title" class="text-3xl font-black mb-2 text-white">Pinball Recall</h2>
                 <div id="overlay-message" class="text-slate-300 mb-8 text-sm text-center max-w-xs">
                     Memorize the bumper locations. When they disappear, predict where the ball will exit!
                 </div>
-                
+
                 <button id="action-btn" class="w-full max-w-xs bg-purple-600 hover:bg-purple-500 text-white font-bold py-4 px-6 rounded-xl transition-all hover:scale-105 active:scale-95 shadow-lg shadow-purple-900/50">
                     Start Game
                 </button>
@@ -207,10 +208,24 @@
         // --- Logic ---
 
         function initGame() {
+            // Load persistent data
+            const stored = getStoredData();
+            const maxLevel = stored.maxLevel || 1;
+
+            // Start at 60% of max level (min level 1)
+            const startRoundNum = Math.max(1, Math.floor(maxLevel * 0.6));
+
             gameState.score = 0;
-            gameState.round = 1;
+            gameState.round = startRoundNum;
             updateHUD();
             startRound();
+
+            // Visual Feedback for Checkpoint
+            if (startRoundNum > 1) {
+                statusText.innerText = `Checkpoint Loaded: Round ${startRoundNum}`;
+                statusText.className = "mt-2 text-xs font-bold text-green-500 uppercase tracking-widest";
+            }
+
             overlay.classList.add('hidden');
         }
 
@@ -266,12 +281,12 @@
             const y = (e.clientY - rect.top) * (canvas.height / rect.height / window.devicePixelRatio);
 
             const clicked = getExitFromCoords(x, y);
-            
+
             if (clicked) {
                 // Start Animation Phase
                 gameState.status = STATE.ANIMATING;
                 gameState.hoveredExit = null;
-                
+
                 // Init Ball
                 gameState.ball = {
                     x: (gameState.entrance.col * CELL_SIZE) + PADDING + (CELL_SIZE/2),
@@ -287,7 +302,7 @@
 
                 // Check correctness for scoring later
                 const isCorrect = (clicked.col === gameState.correctExit.col && clicked.row === gameState.correctExit.row);
-                
+
                 animateBall(isCorrect);
             }
         }
@@ -307,14 +322,14 @@
             // Generation Loop
             while (!validConfig && attempts < 500) {
                 attempts++;
-                
+
                 // 1. Clear Grid
                 gameState.grid = Array(GRID_SIZE * GRID_SIZE).fill(EMPTY);
-                
+
                 // 2. Determine Entrance (Edge)
                 const side = Math.floor(Math.random() * 4);
                 const pos = Math.floor(Math.random() * GRID_SIZE);
-                
+
                 if (side === 0) gameState.entrance = { col: pos, row: -1, dx: 0, dy: 1 }; // Top
                 else if (side === 1) gameState.entrance = { col: GRID_SIZE, row: pos, dx: -1, dy: 0 }; // Right
                 else if (side === 2) gameState.entrance = { col: pos, row: GRID_SIZE, dx: 0, dy: -1 }; // Bottom
@@ -332,7 +347,7 @@
 
                 // 4. Simulate and Check Constraints
                 const result = simulatePath(gameState.entrance, false);
-                
+
                 if (result.bounces === targetBounces && result.col !== -99) {
                     validConfig = true;
                     gameState.correctExit = { col: result.col, row: result.row };
@@ -349,14 +364,14 @@
             gameState.status = STATE.MEMORIZE;
             gameState.ball = null;
             gameState.hoveredExit = null;
-            
+
             statusText.innerText = "Memorize the Bumpers!";
             statusText.className = "mt-2 text-xs font-bold text-purple-500 uppercase tracking-widest";
-            
+
             // Timer for Memorize Phase
             let startTime = Date.now();
             gameState.maxTime = memorizeTime;
-            
+
             const memLoop = () => {
                 if (gameState.status !== STATE.MEMORIZE) return;
                 const elapsed = Date.now() - startTime;
@@ -380,23 +395,23 @@
 
         function animateBall(isCorrect) {
             const ball = gameState.ball;
-            
+
             // Determine next target cell center
             // If currently at entrance (outside), move to first grid cell
             // If inside, calculate physics
-            
+
             // Logic: Move from current center to next center
             // Need to detect if next 'center' is a bumper or exit
-            
+
             const step = () => {
                 if (!ball.targetX) {
                     // Logic to find next cell coordinates
                     let nextCol = ball.col + ball.dx;
                     let nextRow = ball.row + ball.dy;
-                    
+
                     ball.targetX = (nextCol * CELL_SIZE) + PADDING + (CELL_SIZE/2);
                     ball.targetY = (nextRow * CELL_SIZE) + PADDING + (CELL_SIZE/2);
-                    
+
                     // Logic check for bumper interaction at the CURRENT cell (after arrival)
                     // But we are moving TO nextCol.
                     // Physics happens when we ARRIVE at a cell containing a bumper.
@@ -404,13 +419,13 @@
 
                 // Move towards target
                 const dist = Math.hypot(ball.targetX - ball.x, ball.targetY - ball.y);
-                
+
                 if (dist <= ball.speed) {
                     // Arrived at target
                     ball.x = ball.targetX;
                     ball.y = ball.targetY;
                     ball.targetX = null; // Reset for next step
-                    
+
                     // Update logical position
                     ball.col += ball.dx;
                     ball.row += ball.dy;
@@ -419,13 +434,13 @@
                     if (ball.col < 0 || ball.col >= GRID_SIZE || ball.row < 0 || ball.row >= GRID_SIZE) {
                         // Exited
                         finishRound(isCorrect);
-                        return; 
+                        return;
                     }
 
                     // Check Bumper Collision
                     const idx = ball.row * GRID_SIZE + ball.col;
                     const cell = gameState.grid[idx];
-                    
+
                     if (cell !== EMPTY) {
                         playSound('bounce');
                         // Change direction immediately
@@ -458,21 +473,31 @@
                 gameState.score += 100 + (gameState.round * 10);
                 gameState.round++;
                 updateHUD();
-                
+
                 // Briefly pause in IDLE state (which reveals bumpers) before next round
-                gameState.status = STATE.IDLE; 
+                gameState.status = STATE.IDLE;
                 draw();
-                
+
                 setTimeout(() => {
                     startRound();
                 }, 1000);
             } else {
                 playSound('fail');
                 showFeedback("GAME OVER", "text-red-400");
-                
+
+                // Save locally (Split Logic)
+                saveHighScore(gameState.score, gameState.round);
+
                 // End Game Flow
                 gameState.status = STATE.GAME_OVER;
                 draw(); // Reveal bumpers for the player to see what they missed
+
+                // Send Score to Parent Shell
+                window.parent.postMessage({
+                    type: 'GAME_SCORE',
+                    gameId: 'pinball_recall',
+                    score: gameState.score
+                }, '*');
 
                 setTimeout(() => {
                     showGameOverScreen();
@@ -480,20 +505,67 @@
             }
         }
 
+        function getStoredData() {
+            try {
+                // Use dedicated key for progress to avoid overwrite issues
+                const privateKey = 'pinball_recall_progress';
+                return JSON.parse(localStorage.getItem(privateKey)) || { maxLevel: 1 };
+            } catch (e) {
+                return { maxLevel: 1 };
+            }
+        }
+
+        function saveHighScore(score, level) {
+            // 1. Save High Score to Shared Key (for Menu Badges)
+            try {
+                const sharedKey = 'mindarcade_scores';
+                let sharedData = JSON.parse(localStorage.getItem(sharedKey)) || {};
+
+                if (!sharedData.pinball_recall) sharedData.pinball_recall = { highScore: 0 };
+
+                if (score > sharedData.pinball_recall.highScore) {
+                    sharedData.pinball_recall.highScore = score;
+                    localStorage.setItem(sharedKey, JSON.stringify(sharedData));
+                }
+            } catch (e) { console.error("Shared storage error", e); }
+
+            // 2. Save Max Level to Private Key (for Checkpoints)
+            try {
+                const privateKey = 'pinball_recall_progress';
+                let privateData = JSON.parse(localStorage.getItem(privateKey)) || { maxLevel: 1 };
+
+                if (level > privateData.maxLevel) {
+                    privateData.maxLevel = level;
+                    localStorage.setItem(privateKey, JSON.stringify(privateData));
+                }
+            } catch (e) { console.error("Private storage error", e); }
+        }
+
         function showGameOverScreen() {
             const title = document.getElementById('overlay-title');
             const message = document.getElementById('overlay-message');
             const btn = document.getElementById('action-btn');
-            
+
             title.innerText = "Game Over";
-            message.className = "text-slate-300 mb-8 text-sm text-center w-full max-w-sm"; // Ensure width for grid
+            message.className = "text-slate-300 mb-4 text-sm text-center w-full max-w-sm"; // Ensure width for grid
+
+            // Show start level info if game over and we have progress
+            const stored = getStoredData();
+            const max = stored.maxLevel || gameState.round;
+            const nextStart = Math.max(1, Math.floor(max * 0.6));
+
+            let checkpointMsg = "";
+            if (nextStart > 1) {
+                checkpointMsg = `<div class="text-xs font-bold text-purple-400">Checkpoint: Restarting at Round ${nextStart}</div>`;
+            }
+
             message.innerHTML = `
-                <div class="space-y-4">
+                <div class="space-y-3">
                     <div class="flex flex-col items-center">
                         <div class="text-xs font-bold uppercase tracking-widest text-slate-400 mb-1">Final Score</div>
                         <div class="text-6xl font-black text-white tracking-tighter shadow-purple-500/50 drop-shadow-lg">${gameState.score.toLocaleString()}</div>
                     </div>
-                    
+
                     <div class="grid grid-cols-2 gap-3 w-full">
                         <div class="bg-slate-700/40 p-3 rounded-lg border border-slate-600/50">
                             <div class="text-[10px] font-bold uppercase text-slate-400">Rounds Cleared</div>
@@ -504,6 +576,7 @@
                             <div class="text-2xl font-bold text-red-400">1</div>
                         </div>
                     </div>
+                    ${checkpointMsg}
                 </div>
             `;
             btn.innerText = "Play Again";
@@ -513,10 +586,10 @@
         function getExitFromCoords(x, y) {
             // Check boundaries around grid
             // Grid area: PADDING to WIDTH-PADDING
-            
+
             const col = Math.floor((x - PADDING) / CELL_SIZE);
             const row = Math.floor((y - PADDING) / CELL_SIZE);
-            
+
             // Check Top Exits
             if (y < PADDING && col >= 0 && col < GRID_SIZE) return { col: col, row: -1 };
             // Check Bottom Exits
@@ -539,14 +612,14 @@
             // Draw Grid
             ctx.lineWidth = 2;
             ctx.strokeStyle = '#334155'; // Slate 700
-            
+
             for (let i = 0; i <= GRID_SIZE; i++) {
                 // Vertical
                 ctx.beginPath();
                 ctx.moveTo(PADDING + (i * CELL_SIZE), PADDING);
                 ctx.lineTo(PADDING + (i * CELL_SIZE), HEIGHT - PADDING);
                 ctx.stroke();
-                
+
                 // Horizontal
                 ctx.beginPath();
                 ctx.moveTo(PADDING, PADDING + (i * CELL_SIZE));
@@ -560,7 +633,7 @@
 
             gameState.grid.forEach((cell, idx) => {
                 if (cell === EMPTY) return;
-                
+
                 // Visibility check
                 if (!revealAll) {
                     // Check if ball is currently on this tile, if so, reveal it briefly
@@ -588,7 +661,7 @@
                     ctx.lineTo(x + CELL_SIZE - 10, y + CELL_SIZE - 10);
                 }
                 ctx.stroke();
-                
+
                 // Glow effect
                 ctx.shadowColor = '#a855f7';
                 ctx.shadowBlur = 10;
@@ -601,9 +674,9 @@
                 const ent = gameState.entrance;
                 let ex = PADDING + (ent.col * CELL_SIZE) + (CELL_SIZE/2);
                 let ey = PADDING + (ent.row * CELL_SIZE) + (CELL_SIZE/2);
-                
+
                 // Adjust for being 'outside' the grid logic (-1 or GRID_SIZE)
-                if (ent.col === -1) ex += CELL_SIZE/2; 
+                if (ent.col === -1) ex += CELL_SIZE/2;
                 else if (ent.col === GRID_SIZE) ex -= CELL_SIZE/2;
                 if (ent.row === -1) ey += CELL_SIZE/2;
                 else if (ent.row === GRID_SIZE) ey -= CELL_SIZE/2;
@@ -618,7 +691,7 @@
                 ctx.beginPath();
                 ctx.arc(ex, ey, 8, 0, Math.PI * 2);
                 ctx.fill();
-                
+
                 // Label "START"
                 ctx.fillStyle = '#94a3b8';
                 ctx.font = '10px Inter';
@@ -631,7 +704,7 @@
                 const h = gameState.hoveredExit;
                 let hx = PADDING + (h.col * CELL_SIZE) + (CELL_SIZE/2);
                 let hy = PADDING + (h.row * CELL_SIZE) + (CELL_SIZE/2);
-                
+
                 // Clamp to edge visual
                 if (h.col === -1) hx = PADDING / 2;
                 if (h.col === GRID_SIZE) hx = WIDTH - (PADDING / 2);
@@ -663,7 +736,7 @@
             const rect = canvas.getBoundingClientRect();
             const x = (e.clientX - rect.left) * (canvas.width / rect.width / window.devicePixelRatio);
             const y = (e.clientY - rect.top) * (canvas.height / rect.height / window.devicePixelRatio);
-            
+
             const ex = getExitFromCoords(x, y);
             if (ex) {
                 gameState.hoveredExit = ex;
@@ -687,7 +760,7 @@
         function showFeedback(text, colorClass) {
             feedbackEl.innerText = text;
             feedbackEl.className = `absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 pointer-events-none z-40 font-black text-4xl drop-shadow-lg transition-all duration-300 ${colorClass} whitespace-nowrap`;
-            
+
             requestAnimationFrame(() => {
                 feedbackEl.style.opacity = '1';
                 feedbackEl.style.transform = 'translate(-50%, -50%) scale(1.2)';

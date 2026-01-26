@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Memory Grid</title>
+    <title>Memory Matrix</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
@@ -32,7 +32,7 @@
         .tile-default {
             background-color: #cbd5e1; /* slate-300 */
         }
-        
+
         .tile-default:hover {
             background-color: #94a3b8; /* slate-400 */
         }
@@ -93,13 +93,20 @@
 
     <!-- Header / HUD -->
     <header class="flex-none p-4 md:p-6 flex justify-between items-center bg-white shadow-sm z-10">
-        <div class="flex items-center gap-3">
-            <div class="bg-sky-500 text-white p-2 rounded-lg">
-                <i class="fa-solid fa-brain text-xl"></i>
-            </div>
-            <div>
-                <h1 class="font-bold text-xl leading-none">Memory Grid</h1>
-                <p class="text-xs text-slate-500 font-semibold">BRAIN TRAINING</p>
+        <div class="flex items-center gap-4">
+            <!-- UPDATED: Back Button sends message to parent -->
+            <button onclick="window.parent.postMessage({type: 'EXIT_GAME'}, '*')" class="flex items-center justify-center w-10 h-10 rounded-full hover:bg-slate-100 text-slate-400 hover:text-sky-600 transition-colors" title="Back to Menu">
+                <i class="fa-solid fa-house"></i>
+            </button>
+
+            <div class="flex items-center gap-3 pl-4 border-l border-slate-200">
+                <div class="bg-sky-500 text-white p-2 rounded-lg">
+                    <i class="fa-solid fa-brain text-xl"></i>
+                </div>
+                <div>
+                    <h1 class="font-bold text-xl leading-none">Memory Matrix</h1>
+                    <p class="text-xs text-slate-500 font-semibold">BRAIN TRAINING</p>
+                </div>
             </div>
         </div>
 
@@ -121,7 +128,7 @@
 
     <!-- Main Game Area -->
     <main class="flex-grow flex items-center justify-center relative p-4 bg-slate-100">
-        
+
         <!-- The Grid -->
         <div id="game-board-container" class="relative">
             <div id="game-board">
@@ -135,10 +142,10 @@
                 <div class="mb-6 inline-flex items-center justify-center w-20 h-20 rounded-full bg-sky-100 text-sky-600 mb-4">
                     <i id="overlay-icon" class="fa-solid fa-play text-3xl"></i>
                 </div>
-                
+
                 <h2 id="overlay-title" class="text-2xl font-black mb-2 text-slate-800">Ready?</h2>
                 <p id="overlay-message" class="text-slate-600 mb-8 leading-relaxed">Memorize the pattern of blue tiles, then tap them when they disappear.</p>
-                
+
                 <button id="action-btn" class="w-full bg-sky-600 hover:bg-sky-700 text-white font-bold py-4 px-6 rounded-xl transition-transform hover:-translate-y-1 active:translate-y-0 shadow-lg shadow-sky-200">
                     Start Game
                 </button>
@@ -199,13 +206,13 @@
 
         function playSound(type) {
             if (audioCtx.state === 'suspended') audioCtx.resume();
-            
+
             const oscillator = audioCtx.createOscillator();
             const gainNode = audioCtx.createGain();
-            
+
             oscillator.connect(gainNode);
             gainNode.connect(audioCtx.destination);
-            
+
             if (type === 'flip') {
                 oscillator.type = 'sine';
                 oscillator.frequency.setValueAtTime(400, audioCtx.currentTime);
@@ -238,62 +245,63 @@
          */
 
         function initGame() {
-            STATE.level = 1;
+            // Load persistent data
+            const stored = getStoredData();
+            const maxLevel = stored.maxLevel || 1;
+
+            // Start at 60% of max level (min level 1)
+            const startLevelNum = Math.max(1, Math.floor(maxLevel * 0.6));
+
+            STATE.level = startLevelNum;
             STATE.score = 0;
-            STATE.gridSize = CONFIG.baseGridSize;
-            STATE.numTiles = CONFIG.startTiles;
+
+            // Calculate grid state based on the starting level
+            updateDifficulty(); // Updates grid size and numTiles based on STATE.level
+
             STATE.isPlaying = true;
             updateHUD();
             startLevel();
-            
+
             // Hide overlay
             overlayEl.classList.add('opacity-0', 'pointer-events-none');
         }
 
-        function calculateDifficulty() {
-            // Logic to scale difficulty
-            // Every 3 levels, increase grid size
-            // Every level, increase tiles (reset when grid grows)
-            
-            // Simple Progression Algorithm:
-            // Lvl 1: 3x3, 3 tiles
-            // Lvl 2: 3x3, 4 tiles
-            // Lvl 3: 4x4, 4 tiles
-            // Lvl 4: 4x4, 5 tiles
-            // Lvl 5: 4x4, 6 tiles
-            // Lvl 6: 5x5, 6 tiles
-            // ...
-            
-            if (STATE.level === 1) {
-                STATE.gridSize = 3;
-                STATE.numTiles = 3;
-            } else {
-                // Just a rough curve
-                STATE.numTiles++;
-                
-                // If tiles cover more than 40% of grid, expand grid
-                const totalCells = STATE.gridSize * STATE.gridSize;
-                if (STATE.numTiles > totalCells * 0.45) {
-                    STATE.gridSize++;
-                    // Slightly reduce tiles when grid expands to give a breather, but keep it challenging
-                    // Or keep tiles same, but bigger space makes it harder anyway.
+        // Updated to be deterministic based on STATE.level
+        function updateDifficulty() {
+            let size = CONFIG.baseGridSize; // 3
+            let tiles = CONFIG.startTiles;  // 3
+
+            // Simulate progression up to current level to get correct grid state
+            for (let i = 1; i < STATE.level; i++) {
+                tiles++;
+                const totalCells = size * size;
+                if (tiles > totalCells * 0.45) {
+                    size++;
+                    // Note: In original incremental logic, tiles simply kept increasing.
+                    // We maintain that logic here.
                 }
-                
-                // Cap Grid Size at 6x6 for mobile usability, maybe 7x7 desktop
-                if (STATE.gridSize > 6) STATE.gridSize = 6;
+                if (size > 6) size = 6;
             }
+
+            STATE.gridSize = size;
+            STATE.numTiles = tiles;
         }
 
         function startLevel() {
             STATE.isInputActive = false;
             STATE.userPattern = [];
             STATE.pattern = [];
-            
-            if (STATE.level > 1) calculateDifficulty();
-            
+
+            // Determine difficulty for *next* round if we were progressing normally
+            // But since we have updateDifficulty() called in initGame, and we increment level in levelComplete,
+            // we should call updateDifficulty() here if level > 1?
+            // Actually, best practice: levelComplete increments level -> calls updateDifficulty -> calls startLevel.
+            // initGame sets level -> calls updateDifficulty -> calls startLevel.
+            // So startLevel just uses current STATE.
+
             updateHUD();
             renderGrid();
-            
+
             // Short delay before showing pattern
             setTimeout(() => {
                 generatePattern();
@@ -303,16 +311,16 @@
 
         function renderGrid() {
             boardEl.innerHTML = '';
-            
+
             // Set grid columns CSS
             boardEl.style.gridTemplateColumns = `repeat(${STATE.gridSize}, 1fr)`;
-            
+
             // Calculate tile size based on viewport to keep it square and fitting
             // Base size calc: (Min(90vw, 60vh) - gaps) / gridSize
             const viewportSize = Math.min(window.innerWidth * 0.9, window.innerHeight * 0.6);
             const gapSize = 8 * (STATE.gridSize - 1); // 0.5rem = 8px
             const tileSize = Math.floor((viewportSize - gapSize) / STATE.gridSize);
-            
+
             const totalCells = STATE.gridSize * STATE.gridSize;
 
             for (let i = 0; i < totalCells; i++) {
@@ -322,10 +330,10 @@
                 tile.style.height = `${tileSize}px`;
                 tile.dataset.index = i;
                 tile.addEventListener('click', () => handleTileClick(i));
-                
+
                 // prevent drag
                 tile.ondragstart = () => false;
-                
+
                 boardEl.appendChild(tile);
             }
         }
@@ -333,19 +341,19 @@
         function generatePattern() {
             const totalCells = STATE.gridSize * STATE.gridSize;
             const indices = Array.from({length: totalCells}, (_, i) => i);
-            
+
             // Fisher-Yates Shuffle
             for (let i = indices.length - 1; i > 0; i--) {
                 const j = Math.floor(Math.random() * (i + 1));
                 [indices[i], indices[j]] = [indices[j], indices[i]];
             }
-            
+
             STATE.pattern = indices.slice(0, STATE.numTiles);
         }
 
         function showPattern() {
             const tiles = document.querySelectorAll('.tile');
-            
+
             // Reveal
             STATE.pattern.forEach(index => {
                 const tile = tiles[index];
@@ -354,7 +362,7 @@
                     tile.classList.add('tile-pattern');
                 }
             });
-            
+
             playSound('flip');
 
             // Hide after delay
@@ -373,7 +381,7 @@
 
         function handleTileClick(index) {
             if (!STATE.isInputActive) return;
-            
+
             // Ignore if already clicked (check class list for correct/wrong)
             const tile = document.querySelectorAll('.tile')[index];
             if (tile.classList.contains('tile-correct') || tile.classList.contains('tile-wrong')) return;
@@ -384,9 +392,9 @@
                 tile.classList.remove('tile-default');
                 tile.classList.add('tile-correct');
                 playSound('correct');
-                
+
                 STATE.userPattern.push(index);
-                
+
                 // Check if level complete
                 if (STATE.userPattern.length === STATE.pattern.length) {
                     levelComplete();
@@ -396,31 +404,42 @@
                 tile.classList.remove('tile-default');
                 tile.classList.add('tile-wrong');
                 playSound('wrong');
-                
+
                 gameOver();
             }
         }
 
         function levelComplete() {
             STATE.isInputActive = false;
-            
+
             // Score Calc
             const levelBonus = STATE.level * 50;
             const points = (STATE.numTiles * CONFIG.scorePerTile) + levelBonus;
             STATE.score += points;
-            
+
             showFeedback("Perfect!", "bg-green-500");
-            
+
             STATE.level++;
+            updateDifficulty(); // Update config for next level
             updateHUD();
-            
+
             setTimeout(startLevel, CONFIG.postRoundDelay);
         }
 
         function gameOver() {
             STATE.isInputActive = false;
             STATE.isPlaying = false;
-            
+
+            // Save Score and Max Level
+            saveHighScore(STATE.score, STATE.level);
+
+            // Send Score to Parent Shell
+            window.parent.postMessage({
+                type: 'GAME_SCORE',
+                gameId: 'memory_matrix',
+                score: STATE.score
+            }, '*');
+
             // Show missed tiles
             const tiles = document.querySelectorAll('.tile');
             STATE.pattern.forEach(index => {
@@ -435,12 +454,52 @@
             }, 1500);
         }
 
+        function getStoredData() {
+            try {
+                const key = 'mindarcade_scores';
+                let data = JSON.parse(localStorage.getItem(key)) || {};
+                return data.memory_matrix || { highScore: 0, maxLevel: 1 };
+            } catch (e) {
+                return { highScore: 0, maxLevel: 1 };
+            }
+        }
+
+        function saveHighScore(score, level) {
+            try {
+                const key = 'mindarcade_scores';
+                let data = JSON.parse(localStorage.getItem(key)) || {};
+
+                if (!data.memory_matrix) data.memory_matrix = { highScore: 0, maxLevel: 1 };
+
+                if (score > data.memory_matrix.highScore) {
+                    data.memory_matrix.highScore = score;
+                }
+                if (level > data.memory_matrix.maxLevel) {
+                    data.memory_matrix.maxLevel = level;
+                }
+
+                localStorage.setItem(key, JSON.stringify(data));
+            } catch (e) {
+                console.error("Failed to save score locally:", e);
+            }
+        }
+
         function showOverlay(title, msg, iconClass) {
             overlayTitle.innerText = title;
             overlayMessage.innerText = msg;
             overlayIcon.className = `fa-solid ${iconClass} text-3xl`;
             actionBtn.innerText = title === 'Game Over' ? 'Try Again' : 'Start Game';
-            
+
+            // Show start level info if game over and we have progress
+            if (title === 'Game Over') {
+                const stored = getStoredData();
+                const max = stored.maxLevel || STATE.level;
+                const nextStart = Math.max(1, Math.floor(max * 0.6));
+                if (nextStart > 1) {
+                    overlayMessage.innerHTML = `${msg}<br><br><span class="text-xs font-bold text-sky-600">Checkpoint: Restarting at Level ${nextStart}</span>`;
+                }
+            }
+
             overlayEl.classList.remove('opacity-0', 'pointer-events-none');
         }
 
@@ -448,20 +507,20 @@
             scoreDisplay.innerText = STATE.score.toLocaleString();
             levelDisplay.innerText = STATE.level;
             tilesCountDisplay.innerText = STATE.numTiles;
-            
+
             // Update progress bar (visual flair, fills based on tiles found in current level)
             // But we don't track incremental progress in HUD easily, so maybe just level progress
             // Let's make progress bar show difficulty roughly (tiles / total)
             const percentage = (STATE.numTiles / (STATE.gridSize * STATE.gridSize)) * 100;
             progressBar.style.width = `${percentage}%`;
         }
-        
+
         function showFeedback(text, colorClass) {
             feedbackEl.innerText = text;
             feedbackEl.className = `absolute top-4 left-1/2 transform -translate-x-1/2 px-6 py-2 rounded-full text-sm font-semibold transition-all duration-300 pointer-events-none shadow-lg ${colorClass || 'bg-slate-800 text-white'}`;
             feedbackEl.style.opacity = '1';
             feedbackEl.style.transform = 'translate(-50%, 0)';
-            
+
             setTimeout(() => {
                 feedbackEl.style.opacity = '0';
                 feedbackEl.style.transform = 'translate(-50%, -10px)';

@@ -11,12 +11,16 @@
         body { font-family: 'Inter', sans-serif; }
         .game-card { transition: all 0.3s ease; }
         .game-card:hover { transform: translateY(-5px); }
+        .score-badge {
+            background: rgba(255, 255, 255, 0.9);
+            backdrop-filter: blur(4px);
+        }
     </style>
 </head>
 <body class="bg-slate-50 text-slate-800 min-h-screen flex flex-col">
 
     <!-- Navbar -->
-    <nav class="bg-white shadow-sm border-b border-slate-200">
+    <nav class="bg-white shadow-sm border-b border-slate-200 z-20 relative">
         <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
             <div class="flex items-center gap-2">
                 <div class="bg-indigo-600 text-white p-2 rounded-lg">
@@ -25,13 +29,13 @@
                 <span class="font-black text-xl tracking-tight text-slate-900">MindArcade</span>
             </div>
             <div class="text-sm font-medium text-slate-500">
-                v1.0.0
+                v1.4.2
             </div>
         </div>
     </nav>
 
     <!-- Hero Section -->
-    <header class="bg-indigo-600 text-white py-12 md:py-20">
+    <header class="bg-indigo-600 text-white py-12">
         <div class="max-w-4xl mx-auto px-4 text-center">
             <h1 class="text-4xl md:text-5xl font-extrabold mb-4">Train Your Brain</h1>
             <p class="text-indigo-100 text-lg md:text-xl max-w-2xl mx-auto">
@@ -41,14 +45,19 @@
     </header>
 
     <!-- Game Grid -->
-    <main class="flex-grow max-w-6xl mx-auto px-4 py-12 -mt-10">
+    <main class="flex-grow max-w-6xl mx-auto px-4 py-12">
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-            
+
             <!-- Game Card: Memory Matrix -->
-            <a href="memory_matrix.html" class="game-card bg-white rounded-2xl shadow-lg overflow-hidden border border-slate-100 group cursor-pointer block">
+            <a href="memory_matrix.html" class="game-card bg-white rounded-2xl shadow-lg overflow-hidden border border-slate-100 group cursor-pointer block relative z-10" target="_self">
                 <div class="h-40 bg-sky-500 relative flex items-center justify-center overflow-hidden">
                     <div class="absolute inset-0 opacity-20 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-white to-transparent"></div>
                     <i class="fa-solid fa-brain text-6xl text-white opacity-90 group-hover:scale-110 transition-transform duration-300"></i>
+
+                    <!-- High Score Badge -->
+                    <div class="absolute bottom-2 right-2 score-badge px-3 py-1 rounded-full text-xs font-bold text-sky-700 shadow-sm hidden pointer-events-none" data-game="memory_matrix">
+                        Best: <span class="score-value">0</span>
+                    </div>
                 </div>
                 <div class="p-6">
                     <div class="flex justify-between items-start mb-2">
@@ -64,114 +73,101 @@
                 </div>
             </a>
 
-            <!-- Placeholder Card: Offset Match -->
-            <a href="offset_match.html" class="game-card bg-white rounded-2xl shadow-lg overflow-hidden border border-slate-100 group cursor-pointer block">
-                <div class="h-40 bg-sky-500 relative flex items-center justify-center overflow-hidden">
+            <!-- Game Card: Memory Match -->
+            <a href="offset_match.html" class="game-card bg-white rounded-2xl shadow-lg overflow-hidden border border-slate-100 group cursor-pointer block relative z-10" target="_self">
+                <div class="h-40 bg-indigo-500 relative flex items-center justify-center overflow-hidden">
                     <div class="absolute inset-0 opacity-20 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-white to-transparent"></div>
-                    <i class="fa-solid fa-brain text-6xl text-white opacity-90 group-hover:scale-110 transition-transform duration-300"></i>
+                    <i class="fa-solid fa-rotate text-6xl text-white opacity-90 group-hover:scale-110 transition-transform duration-300"></i>
+
+                    <div class="absolute bottom-2 right-2 score-badge px-3 py-1 rounded-full text-xs font-bold text-indigo-700 shadow-sm hidden pointer-events-none" data-game="memory_match">
+                        Best: <span class="score-value">0</span>
+                    </div>
                 </div>
                 <div class="p-6">
                     <div class="flex justify-between items-start mb-2">
                         <h3 class="font-bold text-xl text-slate-900 group-hover:text-indigo-600 transition-colors">Offset Match</h3>
-                        <span class="bg-sky-100 text-sky-700 text-xs px-2 py-1 rounded-full font-bold">SPATIAL</span>
+                        <span class="bg-indigo-100 text-indigo-700 text-xs px-2 py-1 rounded-full font-bold">2-BACK</span>
                     </div>
                     <p class="text-slate-500 text-sm mb-4 line-clamp-2">
-                        Memorize the sequence of cards as they rotate.
+                        Keep track of cards in a sequence and match the current one to 2 steps back.
                     </p>
-                    <div class="flex items-center text-sky-600 font-bold text-sm">
+                    <div class="flex items-center text-indigo-600 font-bold text-sm">
                         Play Now <i class="fa-solid fa-arrow-right ml-2 group-hover:translate-x-1 transition-transform"></i>
                     </div>
                 </div>
             </a>
 
-            <a href="pinball_recall.html" class="game-card bg-white rounded-2xl shadow-lg overflow-hidden border border-slate-100 group cursor-pointer block">
-                <div class="h-40 bg-sky-500 relative flex items-center justify-center overflow-hidden">
+            <!-- Game Card: Pinball Recall -->
+            <a href="pinball_recall.html" class="game-card bg-white rounded-2xl shadow-lg overflow-hidden border border-slate-100 group cursor-pointer block relative z-10" target="_self">
+                <div class="h-40 bg-purple-500 relative flex items-center justify-center overflow-hidden">
                     <div class="absolute inset-0 opacity-20 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-white to-transparent"></div>
-                    <i class="fa-solid fa-brain text-6xl text-white opacity-90 group-hover:scale-110 transition-transform duration-300"></i>
+                    <i class="fa-solid fa-shapes text-6xl text-white opacity-90 group-hover:scale-110 transition-transform duration-300"></i>
+
+                    <div class="absolute bottom-2 right-2 score-badge px-3 py-1 rounded-full text-xs font-bold text-purple-700 shadow-sm hidden pointer-events-none" data-game="pinball_recall">
+                        Best: <span class="score-value">0</span>
+                    </div>
                 </div>
                 <div class="p-6">
                     <div class="flex justify-between items-start mb-2">
                         <h3 class="font-bold text-xl text-slate-900 group-hover:text-indigo-600 transition-colors">Pinball Recall</h3>
-                        <span class="bg-sky-100 text-sky-700 text-xs px-2 py-1 rounded-full font-bold">SPATIAL</span>
+                        <span class="bg-purple-100 text-purple-700 text-xs px-2 py-1 rounded-full font-bold">LOGIC</span>
                     </div>
                     <p class="text-slate-500 text-sm mb-4 line-clamp-2">
-                        Quickly figure out where the pinball will go.
+                        Memorize bumper locations and predict the path of the ball.
                     </p>
-                    <div class="flex items-center text-sky-600 font-bold text-sm">
+                    <div class="flex items-center text-purple-600 font-bold text-sm">
                         Play Now <i class="fa-solid fa-arrow-right ml-2 group-hover:translate-x-1 transition-transform"></i>
                     </div>
                 </div>
             </a>
 
-            <a href="https://www.robotreboot.com/classic" class="game-card bg-white rounded-2xl shadow-lg overflow-hidden border border-slate-100 group cursor-pointer block">
-                <div class="h-40 bg-sky-500 relative flex items-center justify-center overflow-hidden">
+            <!-- Game Card: Set Match -->
+            <a href="set_game.html" class="game-card bg-white rounded-2xl shadow-lg overflow-hidden border border-slate-100 group cursor-pointer block relative z-10" target="_self">
+                <div class="h-40 bg-rose-500 relative flex items-center justify-center overflow-hidden">
                     <div class="absolute inset-0 opacity-20 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-white to-transparent"></div>
-                    <i class="fa-solid fa-brain text-6xl text-white opacity-90 group-hover:scale-110 transition-transform duration-300"></i>
+                    <i class="fa-solid fa-clone text-6xl text-white opacity-90 group-hover:scale-110 transition-transform duration-300"></i>
+
+                    <div class="absolute bottom-2 right-2 score-badge px-3 py-1 rounded-full text-xs font-bold text-rose-700 shadow-sm hidden pointer-events-none" data-game="set_match">
+                        Best: <span class="score-value">0</span>
+                    </div>
                 </div>
                 <div class="p-6">
                     <div class="flex justify-between items-start mb-2">
-                        <h3 class="font-bold text-xl text-slate-900 group-hover:text-indigo-600 transition-colors">Ricochet Puzzle</h3>
-                        <span class="bg-sky-100 text-sky-700 text-xs px-2 py-1 rounded-full font-bold">SPATIAL</span>
+                        <h3 class="font-bold text-xl text-slate-900 group-hover:text-indigo-600 transition-colors">Set Match</h3>
+                        <span class="bg-rose-100 text-rose-700 text-xs px-2 py-1 rounded-full font-bold">PATTERN</span>
                     </div>
                     <p class="text-slate-500 text-sm mb-4 line-clamp-2">
-                        Solve the ricochet puzzle.
+                        Find sets of three cards based on shape, color, number, and shading.
                     </p>
-                    <div class="flex items-center text-sky-600 font-bold text-sm">
+                    <div class="flex items-center text-rose-600 font-bold text-sm">
                         Play Now <i class="fa-solid fa-arrow-right ml-2 group-hover:translate-x-1 transition-transform"></i>
                     </div>
                 </div>
             </a>
 
-            <a href="set_game.html" class="game-card bg-white rounded-2xl shadow-lg overflow-hidden border border-slate-100 group cursor-pointer block">
-                <div class="h-40 bg-sky-500 relative flex items-center justify-center overflow-hidden">
+            <!-- Game Card: Switchboard Operator -->
+            <a href="switchboard_operator.html" class="game-card bg-white rounded-2xl shadow-lg overflow-hidden border border-slate-100 group cursor-pointer block relative z-10" target="_self">
+                <div class="h-40 bg-emerald-600 relative flex items-center justify-center overflow-hidden">
                     <div class="absolute inset-0 opacity-20 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-white to-transparent"></div>
-                    <i class="fa-solid fa-brain text-6xl text-white opacity-90 group-hover:scale-110 transition-transform duration-300"></i>
-                </div>
-                <div class="p-6">
-                    <div class="flex justify-between items-start mb-2">
-                        <h3 class="font-bold text-xl text-slate-900 group-hover:text-indigo-600 transition-colors">Set Practice</h3>
-                        <span class="bg-sky-100 text-sky-700 text-xs px-2 py-1 rounded-full font-bold">SPATIAL</span>
-                    </div>
-                    <p class="text-slate-500 text-sm mb-4 line-clamp-2">
-                        Practice your set skills.
-                    </p>
-                    <div class="flex items-center text-sky-600 font-bold text-sm">
-                        Play Now <i class="fa-solid fa-arrow-right ml-2 group-hover:translate-x-1 transition-transform"></i>
-                    </div>
-                </div>
-            </a>
+                    <i class="fa-solid fa-headset text-6xl text-white opacity-90 group-hover:scale-110 transition-transform duration-300"></i>
 
-            <a href="switchboard_operator.html" class="game-card bg-white rounded-2xl shadow-lg overflow-hidden border border-slate-100 group cursor-pointer block">
-                <div class="h-40 bg-sky-500 relative flex items-center justify-center overflow-hidden">
-                    <div class="absolute inset-0 opacity-20 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-white to-transparent"></div>
-                    <i class="fa-solid fa-brain text-6xl text-white opacity-90 group-hover:scale-110 transition-transform duration-300"></i>
+                    <div class="absolute bottom-2 right-2 score-badge px-3 py-1 rounded-full text-xs font-bold text-emerald-700 shadow-sm hidden pointer-events-none" data-game="switchboard_operator">
+                        Best: <span class="score-value">0</span>
+                    </div>
                 </div>
                 <div class="p-6">
                     <div class="flex justify-between items-start mb-2">
-                        <h3 class="font-bold text-xl text-slate-900 group-hover:text-indigo-600 transition-colors">Switchboard Operator</h3>
-                        <span class="bg-sky-100 text-sky-700 text-xs px-2 py-1 rounded-full font-bold">VERBAL</span>
+                        <h3 class="font-bold text-xl text-slate-900 group-hover:text-indigo-600 transition-colors">Switchboard</h3>
+                        <span class="bg-emerald-100 text-emerald-700 text-xs px-2 py-1 rounded-full font-bold">AUDITORY</span>
                     </div>
                     <p class="text-slate-500 text-sm mb-4 line-clamp-2">
-                        Practice your listening skills.
+                        Listen to rapid-fire commands and patch the data center inputs correctly.
                     </p>
-                    <div class="flex items-center text-sky-600 font-bold text-sm">
+                    <div class="flex items-center text-emerald-600 font-bold text-sm">
                         Play Now <i class="fa-solid fa-arrow-right ml-2 group-hover:translate-x-1 transition-transform"></i>
                     </div>
                 </div>
             </a>
-            <!-- Placeholder Card: Color Train -->
-            <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden opacity-75 grayscale relative">
-                <div class="absolute inset-0 z-10 flex items-center justify-center bg-white/50 backdrop-blur-[2px]">
-                    <span class="bg-slate-800 text-white px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider">Coming Soon</span>
-                </div>
-                <div class="h-40 bg-emerald-500 flex items-center justify-center">
-                    <i class="fa-solid fa-palette text-6xl text-white opacity-50"></i>
-                </div>
-                <div class="p-6">
-                    <h3 class="font-bold text-xl text-slate-400 mb-2">Color Train</h3>
-                    <p class="text-slate-400 text-sm">Challenge your ability to inhibit cognitive interference.</p>
-                </div>
-            </div>
 
         </div>
     </main>
@@ -182,6 +178,29 @@
             <p>&copy; 2025 MindArcade. All rights reserved.</p>
         </div>
     </footer>
+
+    <script>
+        // Load Scores on init
+        document.addEventListener('DOMContentLoaded', () => {
+            const rawData = localStorage.getItem('mindarcade_scores');
+            if (rawData) {
+                try {
+                    const scores = JSON.parse(rawData);
+
+                    // Update badges
+                    document.querySelectorAll('[data-game]').forEach(el => {
+                        const gameId = el.dataset.game;
+                        if (scores[gameId] && scores[gameId].highScore !== undefined) {
+                            el.querySelector('.score-value').innerText = scores[gameId].highScore;
+                            el.classList.remove('hidden');
+                        }
+                    });
+                } catch (e) {
+                    console.error("Error reading scores", e);
+                }
+            }
+        });
+    </script>
 
 </body>
 </html>
