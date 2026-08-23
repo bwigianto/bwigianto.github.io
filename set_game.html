@@ -144,8 +144,8 @@
 </head>
 <body id="main-body" class="flex flex-col text-slate-800 bg-slate-100">
 
-    <!-- FX Layer -->
-    <div id="effects-layer" class="absolute inset-0 pointer-events-none z-50 overflow-hidden"></div>
+    <!-- FX Layer (pointer-events disabled inline so effects can never block input) -->
+    <div id="effects-layer" class="absolute inset-0 pointer-events-none z-50 overflow-hidden" style="pointer-events: none;"></div>
 
     <!-- Header / HUD (Hidden Initially) -->
     <header id="game-header" class="flex-none p-2 md:p-4 flex justify-between items-center bg-white shadow-sm z-20 hidden h-16">
@@ -435,7 +435,7 @@
                     { transform: 'translate(0, 0) scale(1)', opacity: 1 },
                     { transform: `translate(${tx}px, ${ty}px) scale(0)`, opacity: 0 }
                 ], {
-                    duration: 2000 + Math.random() * 400,
+                    duration: 1300 + Math.random() * 400,
                     easing: 'cubic-bezier(0, .9, .57, 1)'
                 }).onfinish = () => el.remove();
             }
@@ -444,7 +444,7 @@
         function triggerConfetti() {
             const colors = ['#ef4444', '#3b82f6', '#22c55e', '#eab308', '#a855f7'];
 
-            for (let i = 0; i < 50; i++) {
+            for (let i = 0; i < 40; i++) {
                 const el = document.createElement('div');
                 el.className = 'absolute w-3 h-3';
                 el.style.backgroundColor = colors[Math.floor(Math.random() * colors.length)];
@@ -458,10 +458,34 @@
                     { transform: `translateY(0) rotate(0deg)`, opacity: 1 },
                     { transform: `translateY(${window.innerHeight}px) rotate(${rotation + 720}deg)`, opacity: 0 }
                 ], {
-                    duration: 1500 + Math.random() * 1000,
+                    duration: 900 + Math.random() * 600,
                     easing: 'linear'
                 }).onfinish = () => el.remove();
             }
+        }
+
+        // Clone a matched card into the FX layer as a non-interactive "ghost" that
+        // plays its removal animation, so the real board can update instantly and
+        // gameplay is never gated on the animation.
+        function spawnRemovalGhost(el, animClass) {
+            const rect = el.getBoundingClientRect();
+            const ghost = el.cloneNode(true);
+            ghost.removeAttribute('id');
+            ghost.classList.remove('selected');
+            ghost.classList.add(animClass);
+            Object.assign(ghost.style, {
+                position: 'fixed',
+                left: rect.left + 'px',
+                top: rect.top + 'px',
+                width: rect.width + 'px',
+                height: rect.height + 'px',
+                margin: '0',
+                zIndex: '60',
+                transition: 'none',
+                pointerEvents: 'none'
+            });
+            effectsLayer.appendChild(ghost);
+            setTimeout(() => ghost.remove(), 450);
         }
 
         // --- Game Logic ---
@@ -597,7 +621,6 @@
                 lastSetTime = now;
 
                 let cardAnimClass = "matched-basic";
-                let sound = 'match';
 
                 if (diff < 5) {
                     cardAnimClass = "matched-high-tier";
@@ -611,42 +634,44 @@
                     playSound('match');
                 }
 
-                // Remove cards from board
-                const indicesToRemove = [i1, i2, i3].sort((a, b) => b - a);
-                indicesToRemove.forEach(idx => {
+                // Animate the matched cards out as non-interactive ghosts...
+                selectedIndices.forEach(idx => {
                     const el = document.getElementById(`card-${idx}`);
-                    if (el) {
-                        el.classList.add(cardAnimClass);
-                        el.style.zIndex = "50";
-                    }
+                    if (el) spawnRemovalGhost(el, cardAnimClass);
                 });
 
-                setTimeout(() => {
-                    if (board.length > 12 || deck.length === 0) {
-                         indicesToRemove.forEach(idx => board.splice(idx, 1));
-                    } else {
-                        indicesToRemove.forEach(idx => {
-                            if (deck.length > 0) board[idx] = deck.pop();
-                            else board.splice(idx, 1);
-                        });
-                    }
-                    ensureSetExists();
-                    selectedIndices = [];
-                    renderBoard();
-                    updateHUD();
-                }, 400);
+                // ...and update the board immediately so the player can keep
+                // playing while the removal animation and confetti run.
+                const indicesToRemove = [...selectedIndices].sort((a, b) => b - a);
+                if (board.length > 12 || deck.length === 0) {
+                     indicesToRemove.forEach(idx => board.splice(idx, 1));
+                } else {
+                     indicesToRemove.forEach(idx => {
+                         if (deck.length > 0) board[idx] = deck.pop();
+                         else board.splice(idx, 1);
+                     });
+                }
+                ensureSetExists();
+                selectedIndices = [];
+                renderBoard();
+                updateHUD();
 
             } else {
                 playSound('error');
-                selectedIndices.forEach(idx => {
+                const erroredIndices = [...selectedIndices];
+                erroredIndices.forEach(idx => {
                     const el = document.getElementById(`card-${idx}`);
                     if (el) el.classList.add('shake-anim');
                 });
+                // Clear the selection right away so the player can immediately
+                // try again while the shake animation plays.
+                selectedIndices = [];
+                renderSelection();
                 setTimeout(() => {
-                    selectedIndices = [];
-                    const cards = document.querySelectorAll('.card');
-                    cards.forEach(c => c.classList.remove('shake-anim'));
-                    renderSelection();
+                    erroredIndices.forEach(idx => {
+                        const el = document.getElementById(`card-${idx}`);
+                        if (el) el.classList.remove('shake-anim');
+                    });
                 }, 400);
             }
         }
