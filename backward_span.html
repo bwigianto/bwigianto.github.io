@@ -1,0 +1,1615 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Backward Span</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;900&display=swap');
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f8fafc;
+            touch-action: none;
+            user-select: none;
+            -webkit-user-select: none;
+            overflow: hidden;
+            /* Use dvh to account for mobile browser nav bars */
+            height: 100dvh;
+            width: 100vw;
+        }
+
+        /* Allow vertical scrolling only where menus need it */
+        .touch-scroll {
+            touch-action: pan-y;
+        }
+
+        /* --- Stage Canvas --- */
+        #stage-canvas {
+            background-color: white;
+            border-radius: 16px;
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.12), 0 4px 10px -4px rgba(0, 0, 0, 0.08);
+            touch-action: none;
+        }
+
+        /* --- Keypad Buttons --- */
+        .key-btn {
+            border: 2px solid #e2e8f0; /* Slate-200 */
+            background-color: white;
+            transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .key-btn:hover {
+            border-color: #94a3b8; /* Slate-400 */
+        }
+        .key-btn:active {
+            transform: scale(0.95);
+            background-color: #fffbeb; /* Amber-50 */
+            border-color: #f59e0b;     /* Amber-500 */
+        }
+
+        /* --- Sequence Tracker Dots --- */
+        .dot {
+            width: 0.75rem;
+            height: 0.75rem;
+            border-radius: 9999px;
+            background-color: #e2e8f0; /* Slate-200 */
+            transition: all 0.15s ease-out;
+        }
+        .dot.filled {
+            background-color: #f59e0b; /* Amber-500 */
+            box-shadow: 0 0 8px rgba(245, 158, 11, 0.5);
+        }
+
+        /* --- Status Shake (validation nudges) --- */
+        @keyframes shake-x {
+            0%, 100% { transform: translateX(0); }
+            25% { transform: translateX(-4px); }
+            75% { transform: translateX(4px); }
+        }
+        .shake-anim {
+            animation: shake-x 0.3s ease-in-out;
+            color: #ef4444 !important; /* Red-500 */
+        }
+
+        /* --- Milestone Banners (Post-Session Only) --- */
+        @keyframes banner-pop {
+            0% { transform: scale(0.85); opacity: 0; }
+            60% { transform: scale(1.03); opacity: 1; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+        @keyframes banner-glow {
+            from { box-shadow: 0 0 12px rgba(245, 158, 11, 0.3); }
+            to { box-shadow: 0 0 28px rgba(250, 204, 21, 0.55); }
+        }
+        .milestone-banner {
+            animation: banner-pop 0.5s ease-out both, banner-glow 1.4s ease-in-out infinite alternate;
+        }
+
+        /* --- Countdown Pop --- */
+        @keyframes count-pop {
+            0% { transform: scale(1.6); opacity: 0; }
+            40% { transform: scale(1); opacity: 1; }
+            100% { transform: scale(0.9); opacity: 0; }
+        }
+        .count-pop {
+            animation: count-pop 0.7s ease-out both;
+        }
+
+        /* --- Submenu Styling --- */
+        .mode-card {
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .mode-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+        }
+        .proto-tab.active {
+            background-color: #0f172a; /* Slate-900 */
+            color: white;
+            border-color: #0f172a;
+        }
+    </style>
+</head>
+<body id="main-body" class="flex flex-col text-slate-800 bg-slate-100">
+
+    <!-- FX Layer (pointer-events disabled inline so effects can never block input) -->
+    <div id="effects-layer" class="absolute inset-0 pointer-events-none z-50 overflow-hidden" style="pointer-events: none;"></div>
+
+    <!-- Header / HUD (Hidden Initially) -->
+    <header id="game-header" class="flex-none p-2 md:p-4 flex justify-between items-center bg-white shadow-sm z-20 hidden h-16">
+        <div class="flex items-center gap-2 md:gap-4">
+            <button id="exit-btn" class="flex items-center justify-center w-10 h-10 rounded-full hover:bg-slate-100 text-slate-400 hover:text-rose-600 transition-colors" title="End Session">
+                <i class="fa-solid fa-arrow-left"></i>
+            </button>
+            <div class="flex items-center gap-2 md:gap-3 pl-2 md:pl-4 border-l border-slate-200">
+                <div class="bg-amber-500 text-white p-1.5 md:p-2 rounded-lg">
+                    <i class="fa-solid fa-list-ol text-lg md:text-xl"></i>
+                </div>
+                <div>
+                    <h1 class="font-bold text-lg md:text-xl leading-none">Backward Span</h1>
+                    <p id="mode-label" class="text-[10px] md:text-xs text-slate-500 font-semibold uppercase">Digits — Clinical</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="flex gap-3 md:gap-6 text-sm md:text-base">
+            <div class="text-center">
+                <p class="text-slate-400 text-[10px] font-bold uppercase tracking-wider">Span</p>
+                <p id="hud-span" class="font-bold text-xl tabular-nums leading-none text-amber-600">2</p>
+            </div>
+            <div class="text-center">
+                <p class="text-slate-400 text-[10px] font-bold uppercase tracking-wider">Peak</p>
+                <p id="hud-peak" class="font-bold text-xl tabular-nums leading-none">0</p>
+            </div>
+            <div class="text-center">
+                <p class="text-slate-400 text-[10px] font-bold uppercase tracking-wider">Score</p>
+                <p id="hud-score" class="font-bold text-xl tabular-nums leading-none">0</p>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Game Area -->
+    <main id="game-main" class="flex-grow flex-col items-center justify-center relative hidden" style="display: none;">
+        <!-- Stage -->
+        <div id="board-wrap" class="relative flex-grow w-full flex items-center justify-center p-2 md:p-4">
+            <canvas id="stage-canvas"></canvas>
+            <!-- Countdown Overlay -->
+            <div id="countdown-el" class="absolute inset-0 flex items-center justify-center pointer-events-none z-30"></div>
+        </div>
+
+        <!-- Tracker + Controls -->
+        <div class="flex-none w-full max-w-md mx-auto px-4 pb-5 space-y-3">
+            <div class="space-y-1.5">
+                <div id="tracker-dots" class="flex justify-center gap-1.5"></div>
+                <p id="status-line" class="text-center text-xs md:text-sm font-semibold text-slate-500 transition-colors"></p>
+            </div>
+
+            <!-- Digits Mode: Keypad -->
+            <div id="keypad-section" class="hidden space-y-2">
+                <div class="grid grid-cols-3 gap-2">
+                    <button class="key-btn py-3 rounded-xl font-black text-lg text-slate-700 shadow-sm" data-digit="1">1</button>
+                    <button class="key-btn py-3 rounded-xl font-black text-lg text-slate-700 shadow-sm" data-digit="2">2</button>
+                    <button class="key-btn py-3 rounded-xl font-black text-lg text-slate-700 shadow-sm" data-digit="3">3</button>
+                    <button class="key-btn py-3 rounded-xl font-black text-lg text-slate-700 shadow-sm" data-digit="4">4</button>
+                    <button class="key-btn py-3 rounded-xl font-black text-lg text-slate-700 shadow-sm" data-digit="5">5</button>
+                    <button class="key-btn py-3 rounded-xl font-black text-lg text-slate-700 shadow-sm" data-digit="6">6</button>
+                    <button class="key-btn py-3 rounded-xl font-black text-lg text-slate-700 shadow-sm" data-digit="7">7</button>
+                    <button class="key-btn py-3 rounded-xl font-black text-lg text-slate-700 shadow-sm" data-digit="8">8</button>
+                    <button class="key-btn py-3 rounded-xl font-black text-lg text-slate-700 shadow-sm" data-digit="9">9</button>
+                </div>
+                <div class="grid grid-cols-2 gap-2">
+                    <button id="key-clear" class="key-btn py-3 rounded-xl font-bold text-sm text-slate-500 shadow-sm"><i class="fa-solid fa-delete-left mr-1"></i> Clear</button>
+                    <button id="key-submit" class="py-3 rounded-xl font-bold text-sm text-white bg-amber-500 hover:bg-amber-600 shadow-sm transition-colors"><i class="fa-solid fa-check mr-1"></i> Enter</button>
+                </div>
+            </div>
+
+            <!-- Spatial Mode: Hint -->
+            <p id="spatial-hint" class="hidden text-center text-xs text-slate-400 font-medium"><i class="fa-solid fa-hand-pointer mr-1"></i> Tap the amber-numbered blocks in REVERSE order</p>
+        </div>
+    </main>
+
+    <!-- Post-Game Review Overlay -->
+    <div id="review-overlay" class="hidden absolute inset-0 z-40 flex-col items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4 overflow-y-auto touch-scroll" style="display: none;">
+        <div class="bg-white p-6 md:p-8 rounded-3xl shadow-2xl text-center max-w-sm w-full my-auto space-y-5">
+            <div>
+                <h2 id="review-verdict" class="text-2xl md:text-3xl font-black text-slate-800">Session Complete</h2>
+                <p id="review-sub" class="text-slate-500 text-sm mt-1"></p>
+            </div>
+
+            <!-- Milestone Banners -->
+            <div id="banner-container" class="space-y-2"></div>
+
+            <!-- Summary Chips -->
+            <div id="summary-chips" class="flex justify-center gap-2"></div>
+
+            <!-- Trial Timeline -->
+            <div class="text-left">
+                <p class="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1.5">Trial Timeline</p>
+                <div id="timeline-list" class="space-y-1.5 max-h-52 overflow-y-auto touch-scroll pr-1"></div>
+            </div>
+
+            <!-- Trendline -->
+            <div class="pt-1">
+                <p class="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1">Score Trendline (Last 15 Sessions)</p>
+                <div class="w-full"><canvas id="trendline-canvas" class="w-full" style="height: 72px;"></canvas></div>
+            </div>
+
+            <div class="space-y-3 pt-1">
+                <button id="again-btn" class="w-full bg-amber-500 hover:bg-amber-600 text-white font-bold py-4 px-6 rounded-xl transition-transform hover:-translate-y-1 active:translate-y-0 shadow-lg">
+                    Play Again <i class="fa-solid fa-rotate-right ml-1"></i>
+                </button>
+                <button id="review-menu-btn" class="w-full bg-white border-2 border-slate-200 hover:border-slate-300 text-slate-600 font-bold py-3 px-6 rounded-xl transition-colors">
+                    Main Menu
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Submenu (Mode Selection) -->
+    <div id="submenu" class="absolute inset-0 z-30 overflow-y-auto touch-scroll bg-slate-50">
+        <div class="min-h-full flex flex-col items-center justify-center p-4 py-8">
+            <div class="max-w-2xl w-full text-center space-y-6">
+                <div class="space-y-2">
+                    <div class="inline-flex items-center justify-center w-20 h-20 rounded-full bg-amber-500 text-white mb-2 shadow-lg shadow-amber-200">
+                        <i class="fa-solid fa-list-ol text-4xl"></i>
+                    </div>
+                    <h1 class="text-4xl md:text-5xl font-black text-slate-900 tracking-tight">Backward Span</h1>
+                    <p class="text-slate-500 text-lg">Recall it forwards. Answer it backwards.</p>
+                </div>
+
+                <!-- Lifetime Stats -->
+                <div class="flex justify-center gap-3">
+                    <div class="bg-white rounded-xl shadow-sm border border-slate-100 px-4 py-2">
+                        <p class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Sessions</p>
+                        <p id="menu-sessions" class="font-black text-xl text-slate-800 tabular-nums">0</p>
+                    </div>
+                    <div class="bg-white rounded-xl shadow-sm border border-slate-100 px-4 py-2">
+                        <p class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Best Peak Span</p>
+                        <p id="menu-peak" class="font-black text-xl text-amber-600 tabular-nums">0</p>
+                    </div>
+                    <div class="bg-white rounded-xl shadow-sm border border-slate-100 px-4 py-2">
+                        <p class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Top Score</p>
+                        <p id="menu-score" class="font-black text-xl text-slate-800 tabular-nums">0</p>
+                    </div>
+                </div>
+
+                <!-- Personal Records -->
+                <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-4 text-left">
+                    <p class="text-xs font-bold uppercase tracking-widest text-slate-400 mb-3"><i class="fa-solid fa-chart-line mr-1"></i> Personal Records</p>
+                    <table class="records-table w-full text-sm">
+                        <thead>
+                            <tr class="text-slate-400 text-[11px] uppercase tracking-wider">
+                                <th class="py-1 text-left font-bold">Test</th>
+                                <th class="py-1 text-right font-bold">Peak Span</th>
+                                <th class="py-1 text-right font-bold">High Score</th>
+                                <th class="py-1 text-right font-bold">Streak</th>
+                                <th class="py-1 text-right font-bold">Sessions</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-100">
+                            <tr>
+                                <td class="py-1.5 font-bold text-slate-700">Digits</td>
+                                <td class="py-1.5 text-right tabular-nums text-amber-600 font-bold" id="rec-digit-peak">0</td>
+                                <td class="py-1.5 text-right tabular-nums text-slate-600" id="rec-digit-score">0</td>
+                                <td class="py-1.5 text-right tabular-nums text-slate-600" id="rec-digit-streak">0</td>
+                                <td class="py-1.5 text-right tabular-nums text-slate-600" id="rec-digit-sessions">0</td>
+                            </tr>
+                            <tr>
+                                <td class="py-1.5 font-bold text-slate-700">Spatial</td>
+                                <td class="py-1.5 text-right tabular-nums text-amber-600 font-bold" id="rec-spatial-peak">0</td>
+                                <td class="py-1.5 text-right tabular-nums text-slate-600" id="rec-spatial-score">0</td>
+                                <td class="py-1.5 text-right tabular-nums text-slate-600" id="rec-spatial-streak">0</td>
+                                <td class="py-1.5 text-right tabular-nums text-slate-600" id="rec-spatial-sessions">0</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- How To Play -->
+                <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-4 text-left text-sm text-slate-500 leading-relaxed">
+                    <p class="text-xs font-bold uppercase tracking-widest text-slate-400 mb-2"><i class="fa-solid fa-circle-info mr-1"></i> How It Works</p>
+                    <p>Watch or hear a sequence play out. When it ends, reproduce it in <span class="font-bold text-slate-700">REVERSE</span> order — <span class="font-bold text-slate-700">(1)→(8)→(4)</span> must come back as <span class="font-bold text-slate-700">(4)→(8)→(1)</span>.</p>
+                    <p class="mt-2"><span class="font-bold text-slate-700">Clinical (WMS-IV):</span> two trials per span; pass either to advance, fail both and the test concludes.</p>
+                    <p class="mt-1"><span class="font-bold text-slate-700">Endless:</span> two passes in a row promotes, one fail demotes. Train forever.</p>
+                    <p class="mt-2 text-slate-400 text-xs">Digits are spoken aloud and flashed. Spatial blocks pulse with rising tones. Keyboard works too: number row, Backspace = Clear, Enter = Submit.</p>
+                </div>
+
+                <!-- Protocol Selector -->
+                <div class="flex justify-center items-center gap-2">
+                    <span class="text-xs font-bold uppercase tracking-widest text-slate-400 mr-1">Protocol</span>
+                    <button id="proto-clinical" class="proto-tab active text-xs font-bold px-4 py-1.5 rounded-full border-2 border-slate-200 text-slate-500 transition-colors"><i class="fa-solid fa-stethoscope mr-1"></i> Clinical</button>
+                    <button id="proto-endless" class="proto-tab text-xs font-bold px-4 py-1.5 rounded-full border-2 border-slate-200 text-slate-500 transition-colors"><i class="fa-solid fa-infinity mr-1"></i> Endless</button>
+                </div>
+
+                <!-- Mode Selection -->
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <button onclick="startGame('digits')" class="mode-card bg-white p-6 rounded-2xl shadow-xl border-2 border-transparent hover:border-amber-500 text-left group">
+                        <div class="bg-amber-100 text-amber-600 p-3 rounded-xl w-fit mb-3">
+                            <i class="fa-solid fa-list-ol text-2xl"></i>
+                        </div>
+                        <h3 class="text-lg font-bold text-slate-800 mb-1">Backward Digit Span</h3>
+                        <p class="text-slate-500 text-xs">Spoken digits. Type them back reversed.</p>
+                    </button>
+                    <button onclick="startGame('spatial')" class="mode-card bg-white p-6 rounded-2xl shadow-xl border-2 border-transparent hover:border-amber-500 text-left group">
+                        <div class="bg-amber-100 text-amber-600 p-3 rounded-xl w-fit mb-3">
+                            <i class="fa-solid fa-border-all text-2xl"></i>
+                        </div>
+                        <h3 class="text-lg font-bold text-slate-800 mb-1">Backward Corsi Span</h3>
+                        <p class="text-slate-500 text-xs">Pulsing blocks. Tap them back reversed.</p>
+                    </button>
+                </div>
+
+                <p id="storage-note" class="hidden text-xs font-semibold text-amber-600">
+                    <i class="fa-solid fa-triangle-exclamation mr-1"></i> Storage unavailable — progress will not survive a reload.
+                </p>
+
+                <a href="index.html" class="inline-block text-slate-400 hover:text-slate-600 font-semibold text-sm mt-2">
+                    <i class="fa-solid fa-house mr-1"></i> Back to Platform
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Feedback Toast -->
+    <div id="feedback" class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 pointer-events-none z-50 opacity-0 transition-all duration-300 font-black text-3xl drop-shadow-2xl whitespace-nowrap text-white text-center"></div>
+
+    <script>
+        // --- Constants & Enums ---
+        const STORE_KEY = 'backward_span_trainer_v1';
+        const PLATFORM_KEY = 'mindarcade_scores';
+        const GAME_ID = 'backward_span';
+        const SCHEMA_VERSION = '1.0.0';
+
+        const STIM_ACTIVE_MS = 750;      // Highlight/sound per item
+        const ITEM_MS = 1000;            // Full item cycle (750 active + 250 blank)
+        const RETENTION_MS = 1000;       // Pause after final item before input unlocks
+        const IDLE_TIMEOUT_MS = 10000;   // Self-paced recall, 10s per input token
+        const COUNTDOWN_STEP_MS = 700;
+        const FEEDBACK_MS = 1600;        // Verdict display before transitioning
+
+        const START_SPAN = 2;
+        const MIN_SPAN = 2;
+
+        // --- Game State ---
+        let state = null;                // Persistent store (both profiles)
+        let storageAvailable = true;
+        let isGameActive = false;
+        let phase = 'menu';              // menu | countdown | encoding | retention | recall | feedback | review
+        let chosenProtocol = 'clinical'; // clinical | endless (menu selector)
+        let session = null;              // Active session (see startGame)
+        let block = null;                // Active trial
+        let pendingTimers = [];
+        let rafId = null;
+        let rafActive = false;
+
+        // --- DOM Elements ---
+        const effectsLayer = document.getElementById('effects-layer');
+        const gameHeader = document.getElementById('game-header');
+        const gameMain = document.getElementById('game-main');
+        const submenu = document.getElementById('submenu');
+        const reviewOverlay = document.getElementById('review-overlay');
+        const modeLabel = document.getElementById('mode-label');
+        const hudSpan = document.getElementById('hud-span');
+        const hudPeak = document.getElementById('hud-peak');
+        const hudScore = document.getElementById('hud-score');
+        const boardWrap = document.getElementById('board-wrap');
+        const stageCanvas = document.getElementById('stage-canvas');
+        const countdownEl = document.getElementById('countdown-el');
+        const trackerDots = document.getElementById('tracker-dots');
+        const statusLine = document.getElementById('status-line');
+        const keypadSection = document.getElementById('keypad-section');
+        const spatialHint = document.getElementById('spatial-hint');
+
+        // --- Persistence Engine ---
+
+        function defaultProfile() {
+            return {
+                peakSpan: 0,
+                highestScore: 0,
+                longestStreak: 0,
+                totalSessions: 0,
+                history: []
+            };
+        }
+
+        function defaultState() {
+            return {
+                version: SCHEMA_VERSION,
+                lastPlayed: Date.now(),
+                profiles: {
+                    digit_span: defaultProfile(),
+                    spatial_span: defaultProfile()
+                }
+            };
+        }
+
+        function safeInt(v, fallback, min) {
+            const n = parseInt(v, 10);
+            if (!Number.isFinite(n)) return fallback;
+            return Math.max(min !== undefined ? min : 0, n);
+        }
+
+        function safeNum(v, fallback) {
+            const n = parseFloat(v);
+            return Number.isFinite(n) ? n : fallback;
+        }
+
+        function sanitizeSummaryList(raw) {
+            if (!Array.isArray(raw)) return [];
+            return raw.slice(-40).map(t => ({
+                span: safeInt(t && t.span, START_SPAN, 1),
+                trial: safeInt(t && t.trial, 1, 1),
+                passed: !!(t && t.passed),
+                latencyMs: Math.max(0, safeInt(t && t.latencyMs, 0))
+            }));
+        }
+
+        // Schema migration: tolerates missing/corrupted fields without throwing.
+        function migrateState(raw) {
+            const src = (raw && typeof raw === 'object' && !Array.isArray(raw)) ? raw : {};
+            const out = defaultState();
+            out.lastPlayed = safeNum(src.lastPlayed, Date.now());
+            const srcProfiles = (src.profiles && typeof src.profiles === 'object' && !Array.isArray(src.profiles)) ? src.profiles : {};
+
+            Object.keys(out.profiles).forEach(key => {
+                const s = (srcProfiles[key] && typeof srcProfiles[key] === 'object') ? srcProfiles[key] : {};
+                const d = out.profiles[key];
+                d.peakSpan = safeInt(s.peakSpan, 0);
+                d.highestScore = safeInt(s.highestScore, 0);
+                d.longestStreak = safeInt(s.longestStreak, 0);
+                d.totalSessions = safeInt(s.totalSessions, 0);
+                if (Array.isArray(s.history)) {
+                    d.history = s.history.slice(-50).map(h => ({
+                        timestamp: safeNum(h && h.timestamp, Date.now()),
+                        mode: (h && typeof h.mode === 'string') ? h.mode : 'clinical',
+                        maxSpanAchieved: safeInt(h && h.maxSpanAchieved, 0),
+                        totalScore: safeInt(h && h.totalScore, 0),
+                        trialsSummary: sanitizeSummaryList(h && h.trialsSummary)
+                    }));
+                }
+            });
+            return out;
+        }
+
+        function probeStorage() {
+            try {
+                const k = '__backward_span_probe__';
+                window.localStorage.setItem(k, '1');
+                window.localStorage.removeItem(k);
+                storageAvailable = true;
+            } catch (e) {
+                storageAvailable = false; // Falls back to ephemeral in-memory state
+            }
+        }
+
+        function loadState() {
+            try {
+                const raw = window.localStorage.getItem(STORE_KEY);
+                if (!raw) return defaultState();
+                return migrateState(JSON.parse(raw));
+            } catch (e) {
+                storageAvailable = false;
+                return defaultState();
+            }
+        }
+
+        // Ephemeral fallback: state simply lives in memory until reload.
+        function persist() {
+            state.lastPlayed = Date.now();
+            try {
+                window.localStorage.setItem(STORE_KEY, JSON.stringify(state));
+                storageAvailable = true;
+            } catch (e) {
+                storageAvailable = false;
+            }
+            updateStorageNote();
+        }
+
+        function updateStorageNote() {
+            const note = document.getElementById('storage-note');
+            if (note) note.classList.toggle('hidden', storageAvailable);
+        }
+
+        // Mirror best score into the platform-wide high-score badge.
+        function syncPlatformBadge() {
+            try {
+                let data = JSON.parse(window.localStorage.getItem(PLATFORM_KEY)) || {};
+                if (typeof data !== 'object' || data === null || Array.isArray(data)) data = {};
+                const best = Math.max(state.profiles.digit_span.highestScore, state.profiles.spatial_span.highestScore);
+                const prev = data[GAME_ID] || { highScore: 0 };
+                if (best > (prev.highScore || 0)) {
+                    data[GAME_ID] = { highScore: best };
+                    window.localStorage.setItem(PLATFORM_KEY, JSON.stringify(data));
+                }
+            } catch (e) { /* Badge sync is best-effort */ }
+        }
+
+        // --- Audio Engine (zero external files) ---
+
+        let audioCtx = null;
+        function ensureAudioCtx() {
+            if (!audioCtx) {
+                try {
+                    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                } catch (e) { audioCtx = null; }
+            }
+            if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+            return audioCtx;
+        }
+
+        function playTone(freq, dur, vol, type) {
+            const ctx = ensureAudioCtx();
+            if (!ctx) return;
+            const now = ctx.currentTime;
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            osc.type = type || 'sine';
+            osc.frequency.setValueAtTime(freq, now);
+            gain.gain.setValueAtTime(vol, now);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + dur);
+            osc.connect(gain);
+            gain.connect(ctx.destination);
+            osc.start(now);
+            osc.stop(now + dur);
+        }
+
+        // Corsi block tones: rising sine 440Hz -> 880Hz across the sequence
+        function blockTone(flashIndex, seqLen) {
+            const t = seqLen <= 1 ? 0 : flashIndex / (seqLen - 1);
+            playTone(440 + t * 440, 0.3, 0.15);
+        }
+
+        function keyTick() {
+            playTone(620, 0.05, 0.05);
+        }
+
+        function playPassChime() {
+            playTone(660, 0.12, 0.08);
+            setTimeout(() => playTone(880, 0.2, 0.08), 110);
+        }
+
+        function playFailBuzz() {
+            playTone(180, 0.3, 0.1, 'sawtooth');
+        }
+
+        // Web Speech digit naming; silent visual-only fallback per AC-05.
+        let speechAvailable = ('speechSynthesis' in window && typeof SpeechSynthesisUtterance !== 'undefined');
+
+        function speakDigit(d) {
+            if (!speechAvailable) return; // Graceful degradation: visual-only
+            try {
+                const u = new SpeechSynthesisUtterance(String(d));
+                u.rate = 0.9;
+                u.volume = 1;
+                window.speechSynthesis.speak(u);
+            } catch (e) {
+                speechAvailable = false; // Never throw mid-session
+            }
+        }
+
+        // --- Visual Effects (celebrations fire post-session only) ---
+
+        function spawnParticles(count, maker) {
+            for (let i = 0; i < count; i++) {
+                const el = document.createElement('div');
+                maker(el, i);
+                effectsLayer.appendChild(el);
+            }
+        }
+
+        function triggerFireworks() {
+            const rect = effectsLayer.getBoundingClientRect();
+            const centerX = rect.width / 2;
+            const centerY = rect.height / 2;
+            const colors = ['#ef4444', '#f59e0b', '#22c55e', '#3b82f6', '#a855f7'];
+
+            spawnParticles(40, (el) => {
+                el.className = 'absolute w-3 h-3 rounded-full';
+                el.style.backgroundColor = colors[Math.floor(Math.random() * colors.length)];
+                el.style.left = centerX + 'px';
+                el.style.top = centerY + 'px';
+
+                const angle = Math.random() * Math.PI * 2;
+                const velocity = 20 + Math.random() * 200;
+                el.animate([
+                    { transform: 'translate(0, 0) scale(1)', opacity: 1 },
+                    { transform: `translate(${Math.cos(angle) * velocity}px, ${Math.sin(angle) * velocity}px) scale(0)`, opacity: 0 }
+                ], {
+                    duration: 1300 + Math.random() * 400,
+                    easing: 'cubic-bezier(0, .9, .57, 1)'
+                }).onfinish = () => el.remove();
+            });
+        }
+
+        function triggerConfetti() {
+            const colors = ['#ef4444', '#f59e0b', '#22c55e', '#3b82f6', '#a855f7'];
+
+            spawnParticles(40, (el) => {
+                el.className = 'absolute w-3 h-3';
+                el.style.backgroundColor = colors[Math.floor(Math.random() * colors.length)];
+                el.style.left = Math.random() * 100 + '%';
+                el.style.top = '-20px';
+
+                const rotation = Math.random() * 360;
+                el.animate([
+                    { transform: 'translateY(0) rotate(0deg)', opacity: 1 },
+                    { transform: `translateY(${window.innerHeight}px) rotate(${rotation + 720}deg)`, opacity: 0 }
+                ], {
+                    duration: 900 + Math.random() * 600,
+                    easing: 'linear'
+                }).onfinish = () => el.remove();
+            });
+        }
+
+        function showToast(text, colorClass) {
+            const feedbackEl = document.getElementById('feedback');
+            feedbackEl.className = `absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 pointer-events-none z-50 transition-all duration-300 font-black text-2xl drop-shadow-2xl whitespace-nowrap ${colorClass}`;
+            feedbackEl.innerText = text;
+            feedbackEl.animate([
+                { transform: 'translate(-50%, -50%) scale(0.6)', opacity: 0 },
+                { transform: 'translate(-50%, -50%) scale(1)', opacity: 1, offset: 0.4 },
+                { transform: 'translate(-50%, -50%) scale(1)', opacity: 1, offset: 0.8 },
+                { transform: 'translate(-50%, -50%) scale(1.1)', opacity: 0 }
+            ], { duration: 1400, easing: 'ease-out' });
+        }
+
+        // --- Sequence & Layout Generators ---
+
+        // Digits 1-9, no identical adjacent digits, no monotonic ascending or
+        // descending run longer than 2 digits (e.g. 1-2-3 or 9-8-7 are forbidden).
+        function generateDigitSeq(len) {
+            for (let attempt = 0; attempt < 400; attempt++) {
+                const s = [];
+                let ok = true;
+                for (let i = 0; i < len; i++) {
+                    let d = 1 + Math.floor(Math.random() * 9);
+                    if (s.length > 0 && s[s.length - 1] === d) d = (d % 9) + 1; // Reroll adjacent dup
+                    if (s.length > 0 && s[s.length - 1] === d) { ok = false; break; }
+                    if (i >= 2) {
+                        const a = s[i - 2], b = s[i - 1];
+                        if ((d > b && b > a) || (d < b && b < a)) { ok = false; break; } // Monotonic triple
+                    }
+                    s.push(d);
+                }
+                if (ok && s.length === len) return s;
+            }
+            // Deterministic fallback (alternating pattern satisfies all constraints)
+            const fb = [];
+            for (let i = 0; i < len; i++) fb.push(i % 2 === 0 ? 2 : 7);
+            return fb;
+        }
+
+        // Exact serial reversal comparison per AC-01: forward or shuffled orders fail.
+        function evaluateReversal(seq, answer) {
+            if (!Array.isArray(answer) || answer.length !== seq.length) return false;
+            const expected = [...seq].reverse();
+            return expected.every((v, i) => v === answer[i]);
+        }
+
+        // 9 non-overlapping blocks with minimum centroid separation (anti-clustering,
+        // anti-line-sweep per AC-03). Distance scales with canvas size; 80px+ is
+        // guaranteed at the reference stage width (~420px) used on phones/desktops.
+        function generateCorsiLayout(sizePx) {
+            const pad = sizePx * 0.10;
+            const half = sizePx * 0.07; // Block half-size
+            const lo = pad + half, hi = sizePx - pad - half;
+            const ladder = [0.24, 0.215, 0.19, 0.17, 0.155, 0.14].map(f => Math.max(f * sizePx, sizePx * 0.13));
+
+            for (const dMin of ladder) {
+                for (let attempt = 0; attempt < 600; attempt++) {
+                    const pts = [];
+                    let ok = true;
+                    for (let i = 0; i < 9; i++) {
+                        let placed = false;
+                        for (let tries = 0; tries < 220 && !placed; tries++) {
+                            const x = lo + Math.random() * (hi - lo);
+                            const y = lo + Math.random() * (hi - lo);
+                            if (pts.every(p => Math.hypot(p.nx * sizePx - x, p.ny * sizePx - y) >= dMin)) {
+                                pts.push({ nx: x / sizePx, ny: y / sizePx });
+                                placed = true;
+                            }
+                        }
+                        if (!placed) { ok = false; break; }
+                    }
+                    if (ok) return pts;
+                }
+            }
+            // Guaranteed fallback: jittered 3x3 lattice (never overlaps, decent spread)
+            const pts = [];
+            for (let r = 0; r < 3; r++) {
+                for (let c = 0; c < 3; c++) {
+                    const cx = lo + (c + 0.5) * ((hi - lo) / 3) + (Math.random() - 0.5) * sizePx * 0.04;
+                    const cy = lo + (r + 0.5) * ((hi - lo) / 3) + (Math.random() - 0.5) * sizePx * 0.04;
+                    pts.push({ nx: cx / sizePx, ny: cy / sizePx });
+                }
+            }
+            for (let i = pts.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [pts[i], pts[j]] = [pts[j], pts[i]];
+            }
+            return pts;
+        }
+
+        // --- Timer Utilities ---
+
+        function clearTimers() {
+            pendingTimers.forEach(id => { clearTimeout(id); clearInterval(id); });
+            pendingTimers = [];
+        }
+
+        function later(fn, ms) {
+            const id = setTimeout(fn, ms);
+            pendingTimers.push(id);
+            return id;
+        }
+
+        // --- Canvas Rendering Engine ---
+
+        let canvasSize = 320;
+
+        function sizeCanvas() {
+            const rect = boardWrap.getBoundingClientRect();
+            const size = Math.max(180, Math.min(rect.width - 16, rect.height - 16, 420));
+            canvasSize = size;
+            const dpr = window.devicePixelRatio || 1;
+            stageCanvas.style.width = size + 'px';
+            stageCanvas.style.height = size + 'px';
+            stageCanvas.width = Math.round(size * dpr);
+            stageCanvas.height = Math.round(size * dpr);
+        }
+
+        function roundRectPath(ctx, x, y, w, h, r) {
+            ctx.beginPath();
+            ctx.moveTo(x + r, y);
+            ctx.arcTo(x + w, y, x + w, y + h, r);
+            ctx.arcTo(x + w, y + h, x, y + h, r);
+            ctx.arcTo(x, y + h, x, y, r);
+            ctx.arcTo(x, y, x + w, y, r);
+            ctx.closePath();
+        }
+
+        function startRenderLoop() {
+            if (rafActive) return;
+            rafActive = true;
+            const loop = () => {
+                if (!rafActive) return;
+                drawFrame();
+                rafId = requestAnimationFrame(loop);
+            };
+            rafId = requestAnimationFrame(loop);
+        }
+
+        function stopRenderLoop() {
+            rafActive = false;
+            if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
+        }
+
+        function drawFrame() {
+            const ctx = stageCanvas.getContext('2d');
+            if (!ctx) return;
+            const dpr = window.devicePixelRatio || 1;
+            const s = canvasSize;
+            ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+            ctx.clearRect(0, 0, s, s);
+
+            if (!block) return;
+            if (session.stimMode === 'spatial') drawSpatialStage(ctx, s);
+            else drawDigitStage(ctx, s);
+        }
+
+        // Flash alpha envelope for the active 750ms stimulus window
+        function flashEnvelope() {
+            if (!block.flash || !block.flash.start) return 0;
+            const elapsed = performance.now() - block.flash.start;
+            if (elapsed < 0 || elapsed > STIM_ACTIVE_MS) return 0;
+            const fadeIn = Math.min(1, elapsed / 120);
+            const fadeOut = elapsed > STIM_ACTIVE_MS - 180 ? (STIM_ACTIVE_MS - elapsed) / 180 : 1;
+            return Math.max(0, Math.min(fadeIn, fadeOut));
+        }
+
+        function drawSpatialStage(ctx, s) {
+            const half = s * 0.07;
+            const pts = block.layout;
+            const env = flashEnvelope();
+
+            pts.forEach((p, i) => {
+                const x = p.nx * s, y = p.ny * s;
+                const flashing = block.phase === 'encoding' && block.flash && block.flash.idx === i && env > 0;
+                const tapped = block.phase === 'recall' && block.input.includes(i);
+
+                ctx.save();
+                // Base block
+                ctx.fillStyle = tapped ? '#fef3c7' : '#f1f5f9'; // Amber-100 when tapped
+                roundRectPath(ctx, x - half, y - half, half * 2, half * 2, half * 0.22);
+                ctx.fill();
+                ctx.strokeStyle = tapped ? '#f59e0b' : '#e2e8f0';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+
+                // Active accent flash during encoding
+                if (flashing) {
+                    ctx.globalAlpha = env;
+                    const grad = ctx.createLinearGradient(x - half, y - half, x + half, y + half);
+                    grad.addColorStop(0, '#fbbf24'); // Amber-400
+                    grad.addColorStop(1, '#d97706'); // Amber-600
+                    ctx.fillStyle = grad;
+                    ctx.shadowColor = 'rgba(245, 158, 11, 0.8)';
+                    ctx.shadowBlur = half * 0.6;
+                    const grow = 1 + 0.08 * env;
+                    roundRectPath(ctx, x - half * grow, y - half * grow, half * 2 * grow, half * 2 * grow, half * 0.22);
+                    ctx.fill();
+                    ctx.restore();
+                    ctx.save();
+                    ctx.globalAlpha = 1;
+                }
+
+                // Persistent faint index numeral (identity aid for the review timeline)
+                ctx.globalAlpha = flashing ? Math.min(1, 1.2 - env) : (tapped ? 0.85 : 0.45);
+                ctx.fillStyle = flashing ? '#ffffff' : '#94a3b8';
+                ctx.font = `900 ${Math.round(half * 0.55)}px Inter, sans-serif`;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(String(i + 1), x + half * 0.55, y - half * 0.55);
+
+                // Recall tap feedback tint
+                if (block.tapFx && block.tapFx.idx === i) {
+                    const t = (performance.now() - block.tapFx.start) / 300;
+                    if (t < 1) {
+                        ctx.globalAlpha = (1 - t) * 0.55;
+                        ctx.fillStyle = block.tapFx.ok ? '#22c55e' : '#ef4444';
+                        roundRectPath(ctx, x - half, y - half, half * 2, half * 2, half * 0.22);
+                        ctx.fill();
+                    }
+                }
+                ctx.restore();
+            });
+
+            if (block.phase === 'retention') {
+                ctx.save();
+                ctx.globalAlpha = 0.35;
+                ctx.fillStyle = '#0f172a';
+                ctx.font = `900 ${Math.round(s * 0.07)}px Inter, sans-serif`;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText('REMEMBER IT…', s / 2, s / 2);
+                ctx.restore();
+            }
+
+            if (block.phase === 'feedback') drawVerdictOverlay(ctx, s);
+        }
+
+        function drawDigitStage(ctx, s) {
+            const env = flashEnvelope();
+
+            if (block.phase === 'encoding') {
+                const d = block.flash ? block.flash.value : null;
+                if (d !== null && env > 0) {
+                    ctx.save();
+                    ctx.globalAlpha = env;
+                    ctx.fillStyle = '#0f172a';
+                    ctx.font = `900 ${Math.round(s * 0.46)}px Inter, sans-serif`;
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    // Accent underline glow
+                    const barW = s * 0.22 * env;
+                    ctx.fillStyle = '#f59e0b';
+                    ctx.shadowColor = 'rgba(245, 158, 11, 0.8)';
+                    ctx.shadowBlur = 18;
+                    roundRectPath(ctx, s / 2 - barW / 2, s * 0.72, barW, s * 0.02, s * 0.01);
+                    ctx.fill();
+                    ctx.fillStyle = '#0f172a';
+                    ctx.fillText(String(d), s / 2, s * 0.44);
+                    ctx.restore();
+                }
+            } else if (block.phase === 'retention') {
+                ctx.save();
+                ctx.globalAlpha = 0.3;
+                ctx.fillStyle = '#0f172a';
+                ctx.font = `900 ${Math.round(s * 0.34)}px Inter, sans-serif`;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText('?', s / 2, s * 0.44);
+                ctx.restore();
+            } else if (block.phase === 'recall' || block.phase === 'feedback') {
+                drawRecallSlots(ctx, s);
+                if (block.phase === 'feedback') drawVerdictOverlay(ctx, s);
+            }
+        }
+
+        // Entered-so-far readout: filled slots + dashed ghosts for the remainder
+        function drawRecallSlots(ctx, s) {
+            const n = block.seq.length;
+            const input = block.input;
+            const gap = s * 0.02;
+            const slotW = Math.min(s * 0.16, (s * 0.86 - (n - 1) * gap) / n);
+            const totalW = slotW * n + gap * (n - 1);
+            const startX = (s - totalW) / 2;
+            const y = s * 0.44, h = slotW * 1.05;
+
+            for (let i = 0; i < n; i++) {
+                const x = startX + i * (slotW + gap);
+                const filled = i < input.length;
+                ctx.save();
+                if (filled) {
+                    ctx.fillStyle = '#fffbeb';
+                    ctx.strokeStyle = '#f59e0b';
+                    roundRectPath(ctx, x, y - h / 2, slotW, h, slotW * 0.18);
+                    ctx.fill(); ctx.lineWidth = 2.5; ctx.stroke();
+                    ctx.fillStyle = '#0f172a';
+                    ctx.font = `900 ${Math.round(slotW * 0.62)}px Inter, sans-serif`;
+                    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+                    ctx.fillText(String(input[i]), x + slotW / 2, y + slotW * 0.02);
+                } else {
+                    ctx.setLineDash([5, 4]);
+                    ctx.strokeStyle = '#cbd5e1';
+                    roundRectPath(ctx, x, y - h / 2, slotW, h, slotW * 0.18);
+                    ctx.stroke();
+                }
+                ctx.restore();
+            }
+        }
+
+        // Post-trial verdict: outcome + shown/reverse/your-answer review rows
+        function drawVerdictOverlay(ctx, s) {
+            const passed = block.result && block.result.passed;
+            ctx.save();
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.92)';
+            roundRectPath(ctx, s * 0.06, s * 0.06, s * 0.88, s * 0.88, s * 0.05);
+            ctx.fill();
+
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.font = `900 ${Math.round(s * 0.085)}px Inter, sans-serif`;
+            ctx.fillStyle = passed ? '#16a34a' : '#dc2626';
+            ctx.fillText(passed ? 'CORRECT!' : (block.result.timedOut ? "TIME'S UP!" : 'NOT QUITE…'), s / 2, s * 0.17);
+
+            const rowY = s * 0.36;
+            const label = (text, y) => {
+                ctx.font = `600 ${Math.round(s * 0.038)}px Inter, sans-serif`;
+                ctx.fillStyle = '#94a3b8';
+                ctx.textAlign = 'left';
+                ctx.fillText(text, s * 0.14, y);
+            };
+
+            const fmt = arr => arr.map(v => String(v)).join('  ');
+            const expected = [...block.seq].reverse();
+
+            label(block.stimModeLabel || 'SHOWN', rowY);
+            ctx.font = `900 ${Math.round(s * 0.055)}px Inter, sans-serif`;
+            ctx.fillStyle = '#334155';
+            ctx.fillText(fmt(block.seq), s * 0.38, rowY);
+
+            label('REVERSE', rowY + s * 0.13);
+            ctx.fillStyle = '#16a34a';
+            ctx.fillText(fmt(expected), s * 0.38, rowY + s * 0.13);
+
+            // Your answer, per-position flagged: green match / red mismatch (AC-01 visibility)
+            label('YOU', rowY + s * 0.26);
+            const ansX = s * 0.38;
+            const ans = block.input;
+            ctx.font = `900 ${Math.round(s * 0.055)}px Inter, sans-serif`;
+            let cursor = ansX;
+            for (let i = 0; i < expected.length; i++) {
+                const ch = i < ans.length ? String(ans[i]) : '–';
+                const okPos = i < ans.length && ans[i] === expected[i];
+                ctx.fillStyle = okPos ? '#16a34a' : '#dc2626';
+                ctx.fillText(ch, cursor, rowY + s * 0.26);
+                cursor += ctx.measureText(ch + '  ').width;
+            }
+
+            ctx.font = `600 ${Math.round(s * 0.034)}px Inter, sans-serif`;
+            ctx.fillStyle = '#94a3b8';
+            ctx.textAlign = 'center';
+            ctx.fillText(block.result.reason || '', s / 2, s * 0.78);
+            ctx.restore();
+        }
+
+        // --- Session Flow ---
+
+        const MODE_META = {
+            digits:  { label: 'Backward Digit Span',  profileKey: 'digit_span',  short: 'Digits'  },
+            spatial: { label: 'Backward Spatial Span', profileKey: 'spatial_span', short: 'Spatial' }
+        };
+
+        function startGame(stimMode) {
+            const meta = MODE_META[stimMode];
+            ensureAudioCtx();
+            // Prime speech synthesis inside the user gesture (required by iOS/Safari)
+            try {
+                if (speechAvailable) {
+                    const u = new SpeechSynthesisUtterance('');
+                    u.volume = 0;
+                    window.speechSynthesis.speak(u);
+                }
+            } catch (e) {}
+
+            session = {
+                stimMode,
+                protocol: chosenProtocol,
+                span: START_SPAN,
+                trialNum: 1,
+                clinicalPasses: 0,
+                clinicalFails: 0,
+                consecPasses: 0,
+                score: 0,
+                mbs: 0,
+                streak: 0,
+                maxStreak: 0,
+                trials: [] // Detailed log for the review timeline
+            };
+
+            modeLabel.innerText = `${meta.short} — ${chosenProtocol === 'clinical' ? 'Clinical' : 'Endless'}`;
+            keypadSection.classList.toggle('hidden', stimMode !== 'digits');
+            spatialHint.classList.toggle('hidden', stimMode !== 'spatial');
+            reviewOverlay.classList.add('hidden');
+            reviewOverlay.style.display = 'none';
+
+            submenu.classList.add('hidden');
+            gameHeader.classList.remove('hidden');
+            gameMain.style.display = 'flex';
+
+            isGameActive = true;
+            sizeCanvas();
+            startRenderLoop();
+            startTrial();
+        }
+
+        function startTrial() {
+            clearTimers();
+            phase = 'countdown';
+
+            const layout = session.stimMode === 'spatial' ? generateCorsiLayout(canvasSize) : null;
+            block = {
+                seq: session.stimMode === 'digits' ? generateDigitSeq(session.span) : shuffle([...Array(9).keys()]).slice(0, session.span),
+                layout,
+                phase: 'countdown',
+                input: [],
+                inputTimes: [],
+                flash: null,
+                tapFx: null,
+                result: null,
+                idleTimer: null,
+                recallUnlockAt: 0,
+                stimModeLabel: session.stimMode === 'spatial' ? 'BLOCK ORDER' : 'SHOWN'
+            };
+
+            updateHUD();
+            renderTracker();
+            setStatus(`Span ${session.span} · Trial ${session.trialNum}${session.protocol === 'clinical' ? '/2' : ''}`, false);
+
+            ['3', '2', '1'].forEach((txt, i) => later(() => showCountdown(txt), i * COUNTDOWN_STEP_MS));
+            later(() => {
+                countdownEl.innerHTML = '';
+                startEncoding();
+            }, 3 * COUNTDOWN_STEP_MS);
+        }
+
+        function shuffle(arr) {
+            for (let i = arr.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [arr[i], arr[j]] = [arr[j], arr[i]];
+            }
+            return arr;
+        }
+
+        function showCountdown(txt) {
+            countdownEl.innerHTML = `<div class="count-pop font-black text-7xl md:text-8xl text-amber-500 drop-shadow-lg">${txt}</div>`;
+        }
+
+        // Encoding: 1000ms per item = 750ms active flash + 250ms blank (AC-02 locked)
+        function startEncoding() {
+            phase = 'encoding';
+            block.phase = 'encoding';
+            setStatus('Memorize the sequence…', false);
+            renderTracker();
+
+            let i = 0;
+            const presentItem = () => {
+                if (phase !== 'encoding') return; // Session was aborted
+                const value = block.seq[i];
+                block.flash = session.stimMode === 'digits'
+                    ? { idx: i, value, start: performance.now() }
+                    : { idx: value, start: performance.now() };
+
+                if (session.stimMode === 'digits') speakDigit(value);
+                else blockTone(i, block.seq.length);
+
+                later(() => { block.flash = null; }, STIM_ACTIVE_MS);
+                later(() => {
+                    i++;
+                    if (i < block.seq.length) presentItem();
+                    else later(startRetention, RETENTION_MS);
+                }, ITEM_MS);
+            };
+            presentItem();
+        }
+
+        function startRetention() {
+            if (!isGameActive) return;
+            phase = 'retention';
+            block.phase = 'retention';
+            setStatus('Get ready to reverse it…', false);
+            later(startRecall, RETENTION_MS);
+        }
+
+        function startRecall() {
+            if (!isGameActive) return;
+            phase = 'recall';
+            block.phase = 'recall';
+            block.recallUnlockAt = performance.now();
+            block.input = [];
+            block.inputTimes = [];
+            renderTracker();
+            updateRecallStatus();
+            armIdleTimer();
+        }
+
+        function updateRecallStatus() {
+            const n = block.seq.length;
+            const done = block.input.length;
+            const verb = session.stimMode === 'digits' ? 'Type the digits in REVERSE order' : 'Tap the blocks in REVERSE order';
+            const suffix = session.stimMode === 'digits' ? ' — Enter to submit' : '';
+            setStatus(`${verb} (${done}/${n})${suffix}`, false);
+        }
+
+        function armIdleTimer() {
+            if (block.idleTimer) clearTimeout(block.idleTimer);
+            block.idleTimer = later(() => {
+                // 10s idle per token: auto-evaluate whatever is entered (incomplete = fail)
+                finishTrial({ timedOut: true, reason: 'Response timed out (10s idle)' });
+            }, IDLE_TIMEOUT_MS);
+        }
+
+        // --- Input Handling (locked outside recall per AC-02) ---
+
+        function handleDigitInput(d) {
+            if (!isGameActive || phase !== 'recall') return;
+            if (block.input.length >= block.seq.length) return;
+            block.input.push(d);
+            block.inputTimes.push(performance.now() - block.recallUnlockAt);
+            keyTick();
+            armIdleTimer();
+            renderTracker();
+            updateRecallStatus();
+
+            if (block.input.length === block.seq.length) {
+                setStatus('All entered — press Enter!', false);
+            }
+        }
+
+        function handleClear() {
+            if (!isGameActive || phase !== 'recall') return;
+            if (block.input.length === 0) return;
+            block.input = [];
+            block.inputTimes = [];
+            keyTick();
+            armIdleTimer();
+            renderTracker();
+            updateRecallStatus();
+        }
+
+        function handleSubmit() {
+            if (!isGameActive || phase !== 'recall') return;
+            if (block.input.length !== block.seq.length) {
+                setStatus(`Enter all ${block.seq.length} digits first`, true);
+                return;
+            }
+            finishTrial({});
+        }
+
+        function handleBlockTap(clientX, clientY) {
+            if (!isGameActive || phase !== 'recall') return;
+            const rect = stageCanvas.getBoundingClientRect();
+            const x = clientX - rect.left, y = clientY - rect.top;
+            const half = canvasSize * 0.07;
+            const hitRange = half * 1.25; // Slightly generous touch targets
+
+            let hitIdx = -1;
+            block.layout.forEach((p, i) => {
+                const bx = p.nx * canvasSize, by = p.ny * canvasSize;
+                if (hitIdx === -1 && Math.hypot(bx - x, by - y) <= hitRange) hitIdx = i;
+            });
+            if (hitIdx === -1) return;
+
+            const expectedNext = [...block.seq].reverse()[block.input.length];
+            const ok = hitIdx === expectedNext;
+            block.tapFx = { idx: hitIdx, ok, start: performance.now() };
+
+            if (ok) {
+                block.input.push(hitIdx);
+                block.inputTimes.push(performance.now() - block.recallUnlockAt);
+                    keyTick();
+                renderTracker();
+                if (block.input.length === block.seq.length) {
+                    finishTrial({});
+                    return;
+                }
+                armIdleTimer();
+                updateRecallStatus();
+            } else {
+                // First wrong block fails the trial immediately (standard Corsi rule)
+                playFailBuzz();
+                finishTrial({ reason: 'Wrong block tapped' });
+            }
+        }
+
+        // --- Evaluation & Adaptive Transition ---
+
+        function finishTrial(opts) {
+            if (phase !== 'recall') return;
+            if (block.idleTimer) { clearTimeout(block.idleTimer); block.idleTimer = null; }
+            phase = 'feedback';
+            block.phase = 'feedback';
+
+            const passed = !opts.timedOut && block.input.length === block.seq.length &&
+                           evaluateReversal(block.seq, block.input);
+
+            const latencies = block.inputTimes.slice(1).map((t, i) => t - block.inputTimes[i]);
+            const trialLatency = latencies.length ? Math.round(latencies.reduce((a, b) => a + b, 0) / latencies.length)
+                                                   : Math.round(block.inputTimes[0] || 0);
+
+            block.result = {
+                passed,
+                timedOut: !!opts.timedOut,
+                reason: opts.reason || (passed ? 'Perfect reversal' : 'Sequence did not match')
+            };
+
+            if (passed) {
+                session.score += session.span * 100; // Span Capacity Score contribution
+                session.mbs = Math.max(session.mbs, session.span);
+                session.streak++;
+                session.maxStreak = Math.max(session.maxStreak, session.streak);
+                playPassChime();
+            } else {
+                session.streak = 0;
+                playFailBuzz();
+            }
+
+            session.trials.push({
+                span: session.span,
+                trial: session.trialNum,
+                passed,
+                latencyMs: trialLatency,
+                original: [...block.seq],
+                answer: [...block.input]
+            });
+
+            setStatus(passed ? 'Correct!' : 'Failed — check the review on screen', !passed);
+            updateHUD();
+            later(applyProgression, FEEDBACK_MS);
+        }
+
+        function applyProgression() {
+            if (!isGameActive) return;
+            const passed = block.result.passed;
+
+            if (session.protocol === 'clinical') {
+                if (passed) session.clinicalPasses++;
+                else session.clinicalFails++;
+
+                if (session.clinicalFails >= 2) {
+                    endSession('Both trials failed at this span.');
+                    return;
+                }
+                if (session.clinicalPasses >= 1) {
+                    session.span++;
+                    session.clinicalPasses = 0;
+                    session.clinicalFails = 0;
+                    session.trialNum = 1;
+                } else {
+                    session.trialNum++;
+                }
+            } else { // Endless staircase
+                if (passed) {
+                    session.consecPasses++;
+                    if (session.consecPasses >= 2) {
+                        session.span++;
+                        session.consecPasses = 0;
+                    }
+                } else {
+                    session.span = Math.max(MIN_SPAN, session.span - 1);
+                    session.consecPasses = 0;
+                }
+                session.trialNum++;
+            }
+
+            startTrial();
+        }
+
+        function endSession(reasonText) {
+            clearTimers();
+            isGameActive = false;
+            phase = 'review';
+            stopRenderLoop();
+            drawFrame(); // Leave the last frame painted behind the overlay
+
+            const meta = MODE_META[session.stimMode];
+            const profile = state.profiles[meta.profileKey];
+
+            const res = {
+                timestamp: Date.now(),
+                mode: session.protocol,
+                maxSpanAchieved: session.mbs,
+                totalScore: session.score,
+                playedTrials: session.trials.length
+            };
+
+            // Record verification BEFORE mutating history (per PRD detection logic)
+            const newRecords = [];
+            if (res.playedTrials > 0) {
+                if (res.maxSpanAchieved > profile.peakSpan) {
+                    newRecords.push({ type: 'PEAK_SPAN', value: res.maxSpanAchieved });
+                    profile.peakSpan = res.maxSpanAchieved;
+                }
+                if (res.totalScore > profile.highestScore) {
+                    newRecords.push({ type: 'HIGH_SCORE', value: res.totalScore });
+                    profile.highestScore = res.totalScore;
+                }
+                if (session.maxStreak > profile.longestStreak) {
+                    profile.longestStreak = session.maxStreak;
+                }
+                profile.totalSessions++;
+                profile.history.push({
+                    timestamp: res.timestamp,
+                    mode: res.mode,
+                    maxSpanAchieved: res.maxSpanAchieved,
+                    totalScore: res.totalScore,
+                    trialsSummary: session.trials.map(t => ({
+                        span: t.span, trial: t.trial, passed: t.passed, latencyMs: t.latencyMs
+                    }))
+                });
+                if (profile.history.length > 50) profile.history = profile.history.slice(-50);
+                persist();
+                syncPlatformBadge();
+            }
+
+            renderReview(res, newRecords, reasonText || '');
+        }
+
+        // --- Review Screen ---
+
+        function renderReview(res, newRecords, reasonText) {
+            const meta = MODE_META[session.stimMode];
+
+            document.getElementById('review-verdict').innerHTML =
+                '<i class="fa-solid fa-award text-amber-500 mr-2"></i>Session Complete';
+            document.getElementById('review-sub').innerText =
+                `${meta.label} · ${session.protocol === 'clinical' ? 'Clinical (WMS-IV)' : 'Endless'}${reasonText ? ' · ' + reasonText : ''}`;
+
+            // Exact PRD banner strings
+            document.getElementById('banner-container').innerHTML = newRecords.map(r => {
+                if (r.type === 'PEAK_SPAN') {
+                    return `<div class="milestone-banner bg-amber-50 text-amber-700 border-2 border-amber-300 rounded-xl px-4 py-2 font-black text-sm">🎉 NEW PEAK SPAN RECORD: ${r.value} ITEMS!</div>`;
+                }
+                return `<div class="milestone-banner bg-emerald-50 text-emerald-700 border-2 border-emerald-200 rounded-xl px-4 py-2 font-black text-sm">🏆 NEW HIGH SCORE: ${r.value} POINTS!</div>`;
+            }).join('');
+
+            // Summary chips: Final span, score, MRL, best streak
+            const mrl = sessionMeanLatency();
+            document.getElementById('summary-chips').innerHTML = `
+                <div class="bg-slate-50 rounded-xl px-4 py-2 border border-slate-100">
+                    <p class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Max Backward Span</p>
+                    <p class="font-black text-xl tabular-nums text-amber-600">${res.maxSpanAchieved || '–'}</p>
+                </div>
+                <div class="bg-slate-50 rounded-xl px-4 py-2 border border-slate-100">
+                    <p class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Score</p>
+                    <p class="font-black text-xl tabular-nums text-slate-800">${res.totalScore}</p>
+                </div>
+                <div class="bg-slate-50 rounded-xl px-4 py-2 border border-slate-100">
+                    <p class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Avg Latency</p>
+                    <p class="font-black text-xl tabular-nums text-slate-800">${mrl > 0 ? (mrl / 1000).toFixed(1) + 's' : '–'}</p>
+                </div>`;
+
+            // Interactive timeline: original vs required reverse vs actual answer
+            document.getElementById('timeline-list').innerHTML = session.trials.map((t, i) => {
+                const expected = [...t.original].reverse();
+                const posChips = expected.map((v, j) => {
+                    const got = j < t.answer.length ? t.answer[j] : null;
+                    const ok = got === v;
+                    const cls = got === null ? 'text-slate-300 border-slate-200' : (ok ? 'text-emerald-600 border-emerald-300 bg-emerald-50' : 'text-rose-600 border-rose-300 bg-rose-50');
+                    return `<span class="inline-flex items-center justify-center w-5 h-5 rounded border text-[10px] font-black tabular-nums ${cls}">${got === null ? '?' : got}</span>`;
+                }).join(' ');
+                return `
+                    <div class="flex items-center gap-2 bg-slate-50 rounded-lg px-2.5 py-1.5 border border-slate-100">
+                        <span class="flex-none text-[10px] font-black uppercase tracking-wide ${t.passed ? 'text-emerald-600' : 'text-rose-500'}">S${t.span}·T${t.trial}<br>${t.passed ? '<i class="fa-solid fa-circle-check"></i>' : '<i class="fa-solid fa-circle-xmark"></i>'}</span>
+                        <div class="flex-1 min-w-0">
+                            <p class="text-[10px] text-slate-400 leading-tight">Shown <span class="font-bold text-slate-600 tabular-nums">${t.original.join(' ')}</span> · Reverse <span class="font-bold text-emerald-600 tabular-nums">${expected.join(' ')}</span></p>
+                            <div class="mt-0.5 flex flex-wrap gap-1">${posChips}</div>
+                        </div>
+                    </div>`;
+            }).join('') || '<p class="text-xs text-slate-400 text-center py-2">No trials recorded.</p>';
+
+            reviewOverlay.classList.remove('hidden');
+            reviewOverlay.style.display = 'flex';
+            requestAnimationFrame(() => drawTrendline(meta.profileKey));
+
+            if (newRecords.some(r => r.type === 'PEAK_SPAN')) triggerFireworks();
+            else if (newRecords.length > 0) triggerConfetti();
+        }
+
+        function sessionMeanLatency() {
+            // MRL across every input token in the session
+            let sum = 0, k = 0;
+            session.trials.forEach(t => {
+                if (t.latencyMs > 0) { sum += t.latencyMs; k++; }
+            });
+            return k ? sum / k : 0;
+        }
+
+        function drawTrendline(profileKey) {
+            const cv = document.getElementById('trendline-canvas');
+            if (!cv || !cv.clientWidth) return;
+            const history = state.profiles[profileKey].history.slice(-15);
+            const dpr = window.devicePixelRatio || 1;
+            const w = cv.clientWidth, h = cv.clientHeight || 72;
+            cv.width = Math.round(w * dpr);
+            cv.height = Math.round(h * dpr);
+            const ctx = cv.getContext('2d');
+            if (!ctx) return;
+            ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+            ctx.clearRect(0, 0, w, h);
+
+            if (history.length === 0) {
+                ctx.fillStyle = '#cbd5e1';
+                ctx.font = 'bold 11px Inter, sans-serif';
+                ctx.textAlign = 'center';
+                ctx.fillText('No sessions yet', w / 2, h / 2);
+                return;
+            }
+
+            const scores = history.map(x => x.totalScore);
+            const lo = Math.min(...scores), hi = Math.max(...scores);
+            const range = Math.max(1, hi - lo);
+            const padX = 12, padY = 14;
+            const xPos = i => history.length === 1 ? w / 2 : padX + i * ((w - 2 * padX) / (history.length - 1));
+            const yPos = v => h - padY - ((v - lo) / range) * (h - 2 * padY);
+
+            // Guide lines
+            ctx.strokeStyle = '#f1f5f9';
+            ctx.lineWidth = 1;
+            [lo, hi].forEach(v => {
+                ctx.beginPath(); ctx.moveTo(padX, yPos(v)); ctx.lineTo(w - padX, yPos(v)); ctx.stroke();
+                ctx.fillStyle = '#cbd5e1';
+                ctx.font = 'bold 9px Inter, sans-serif';
+                ctx.textAlign = 'left';
+                ctx.fillText(String(v), 2, yPos(v) - 3);
+            });
+
+            // Trendline
+            ctx.strokeStyle = '#f59e0b';
+            ctx.lineWidth = 2;
+            ctx.lineJoin = 'round';
+            ctx.beginPath();
+            scores.forEach((v, i) => i === 0 ? ctx.moveTo(xPos(i), yPos(v)) : ctx.lineTo(xPos(i), yPos(v)));
+            ctx.stroke();
+
+            scores.forEach((v, i) => {
+                const last = i === scores.length - 1;
+                ctx.beginPath();
+                ctx.arc(xPos(i), yPos(v), last ? 4.5 : 2.5, 0, Math.PI * 2);
+                ctx.fillStyle = last ? '#d97706' : '#f59e0b';
+                ctx.fill();
+                if (last) {
+                    ctx.fillStyle = '#0f172a';
+                    ctx.font = 'bold 10px Inter, sans-serif';
+                    ctx.textAlign = 'center';
+                    ctx.fillText(String(v), xPos(i), yPos(v) - 8);
+                }
+            });
+        }
+
+        // --- HUD / Tracker / Status ---
+
+        function updateHUD() {
+            const profileKey = session ? MODE_META[session.stimMode].profileKey : 'digit_span';
+            hudSpan.innerText = session ? session.span : START_SPAN;
+            hudPeak.innerText = state.profiles[profileKey].peakSpan;
+            hudScore.innerText = session ? session.score : 0;
+        }
+
+        function renderTracker() {
+            const n = block ? block.seq.length : (session ? session.span : 0);
+            const filled = block ? block.input.length : 0;
+            let html = '';
+            for (let i = 0; i < n; i++) {
+                html += `<div class="dot ${i < filled ? 'filled' : ''}"></div>`;
+            }
+            trackerDots.innerHTML = html;
+        }
+
+        function setStatus(text, isError) {
+            statusLine.innerText = text;
+            statusLine.classList.toggle('shake-anim', !!isError);
+            if (isError) {
+                setTimeout(() => statusLine.classList.remove('shake-anim'), 450);
+            }
+        }
+
+        // --- Menu ---
+
+        function renderMenu() {
+            const d = state.profiles.digit_span, sp = state.profiles.spatial_span;
+            document.getElementById('menu-sessions').innerText = d.totalSessions + sp.totalSessions;
+            document.getElementById('menu-peak').innerText = Math.max(d.peakSpan, sp.peakSpan);
+            document.getElementById('menu-score').innerText = Math.max(d.highestScore, sp.highestScore);
+
+            document.getElementById('rec-digit-peak').innerText = d.peakSpan;
+            document.getElementById('rec-digit-score').innerText = d.highestScore;
+            document.getElementById('rec-digit-streak').innerText = d.longestStreak;
+            document.getElementById('rec-digit-sessions').innerText = d.totalSessions;
+            document.getElementById('rec-spatial-peak').innerText = sp.peakSpan;
+            document.getElementById('rec-spatial-score').innerText = sp.highestScore;
+            document.getElementById('rec-spatial-streak').innerText = sp.longestStreak;
+            document.getElementById('rec-spatial-sessions').innerText = sp.totalSessions;
+
+            updateStorageNote();
+        }
+
+        function exitToMenu() {
+            clearTimers();
+            stopRenderLoop();
+            isGameActive = false;
+            phase = 'menu';
+            session = null;
+            block = null;
+
+            gameHeader.classList.add('hidden');
+            gameMain.style.display = 'none';
+            reviewOverlay.classList.add('hidden');
+            reviewOverlay.style.display = 'none';
+            countdownEl.innerHTML = '';
+            submenu.classList.remove('hidden');
+            renderMenu();
+        }
+
+        // --- Event Wiring ---
+
+        function endSessionAndReview() {
+            // Exit button: gracefully conclude (persists partial sessions too)
+            if (session && session.trials.length > 0) {
+                endSession('Ended early');
+            } else {
+                exitToMenu();
+            }
+        }
+
+        function playAgain() {
+            const stimMode = session.stimMode;
+            reviewOverlay.classList.add('hidden');
+            reviewOverlay.style.display = 'none';
+            startGame(stimMode);
+        }
+
+        document.getElementById('exit-btn').addEventListener('click', endSessionAndReview);
+        document.getElementById('review-menu-btn').addEventListener('click', exitToMenu);
+        document.getElementById('again-btn').addEventListener('click', playAgain);
+
+        document.querySelectorAll('.key-btn[data-digit]').forEach(btn => {
+            btn.addEventListener('pointerdown', (e) => {
+                e.preventDefault();
+                handleDigitInput(parseInt(btn.dataset.digit, 10));
+            });
+        });
+        document.getElementById('key-clear').addEventListener('click', handleClear);
+        document.getElementById('key-submit').addEventListener('click', handleSubmit);
+
+        stageCanvas.addEventListener('pointerdown', (e) => {
+            e.preventDefault();
+            handleBlockTap(e.clientX, e.clientY);
+        });
+
+        window.addEventListener('keydown', (e) => {
+            if (!isGameActive || e.metaKey || e.ctrlKey || e.altKey) return;
+            if (e.key >= '1' && e.key <= '9') { handleDigitInput(parseInt(e.key, 10)); e.preventDefault(); }
+            else if (e.key === 'Backspace') { handleClear(); e.preventDefault(); }
+            else if (e.key === 'Enter') { handleSubmit(); e.preventDefault(); }
+        });
+
+        window.addEventListener('resize', () => {
+            if (phase === 'menu') return;
+            sizeCanvas();
+        });
+
+        document.getElementById('proto-clinical').addEventListener('click', () => setProtocol('clinical'));
+        document.getElementById('proto-endless').addEventListener('click', () => setProtocol('endless'));
+
+        function setProtocol(p) {
+            chosenProtocol = p;
+            document.getElementById('proto-clinical').classList.toggle('active', p === 'clinical');
+            document.getElementById('proto-endless').classList.toggle('active', p === 'endless');
+        }
+
+        // Define global functions for HTML buttons
+        window.startGame = startGame;
+
+        // --- Boot ---
+        probeStorage();
+        state = loadState();
+        syncPlatformBadge();
+        renderMenu();
+
+    </script>
+</body>
+</html>
