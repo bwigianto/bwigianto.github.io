@@ -49,6 +49,29 @@
             border-color: #06b6d4; /* Cyan-500 */
             box-shadow: 0 0 16px rgba(6, 182, 212, 0.35);
         }
+
+        /* Immediate response feedback */
+        .resp-btn.resp-hit {
+            background-color: #f0fdf4; /* Green-50 */
+            border-color: #22c55e;     /* Green-500 */
+            box-shadow: 0 0 18px rgba(34, 197, 94, 0.45);
+            transform: scale(0.96);
+        }
+        .resp-btn.resp-false {
+            background-color: #fef2f2; /* Red-50 */
+            border-color: #ef4444;     /* Red-500 */
+            box-shadow: 0 0 18px rgba(239, 68, 68, 0.45);
+            transform: scale(0.96);
+        }
+        .resp-btn.resp-miss {
+            background-color: #fffbeb; /* Amber-50 */
+            border-color: #f59e0b !important; /* Amber-500 */
+            animation: miss-pulse 0.48s ease-out;
+        }
+        @keyframes miss-pulse {
+            0%, 100% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.05); opacity: 0.85; }
+        }
         .kbd-chip {
             background-color: #0f172a; /* Slate-900 */
             color: white;
@@ -164,6 +187,25 @@
                     <span class="kbd-chip">L</span> Letter
                 </button>
             </div>
+
+            <!-- Live Response Tally -->
+            <div id="tally-bar" class="flex justify-center gap-2">
+                <div class="bg-white rounded-lg px-3 py-1 shadow-sm border border-slate-100 flex items-center gap-1.5">
+                    <i class="fa-solid fa-check text-emerald-500 text-[10px]"></i>
+                    <span id="tally-hits" class="text-xs font-black tabular-nums text-slate-700">0</span>
+                    <span class="text-[10px] font-bold uppercase tracking-wide text-slate-400">Hits</span>
+                </div>
+                <div class="bg-white rounded-lg px-3 py-1 shadow-sm border border-slate-100 flex items-center gap-1.5">
+                    <i class="fa-solid fa-xmark text-rose-500 text-[10px]"></i>
+                    <span id="tally-false" class="text-xs font-black tabular-nums text-slate-700">0</span>
+                    <span class="text-[10px] font-bold uppercase tracking-wide text-slate-400">Errors</span>
+                </div>
+                <div class="bg-white rounded-lg px-3 py-1 shadow-sm border border-slate-100 flex items-center gap-1.5">
+                    <i class="fa-solid fa-bell-slash text-amber-500 text-[10px]"></i>
+                    <span id="tally-misses" class="text-xs font-black tabular-nums text-slate-700">0</span>
+                    <span class="text-[10px] font-bold uppercase tracking-wide text-slate-400">Missed</span>
+                </div>
+            </div>
         </div>
     </main>
 
@@ -259,6 +301,7 @@
                        Respond when the current stimulus matches the one exactly <span id="hint-n" class="font-bold text-slate-700">N</span> steps back:</p>
                     <p class="mt-2"><span class="kbd-chip mr-1">A</span> position repeated &nbsp;&middot;&nbsp; <span class="kbd-chip mr-1">L</span> letter repeated</p>
                     <p class="mt-2">Each block runs 20 scored trials. Score <span class="font-bold text-emerald-600">&ge; 80%</span> to advance a level, below <span class="font-bold text-rose-500">65%</span> drops you back.</p>
+                    <p class="mt-2 text-slate-400 text-xs">Instant feedback: <span class="font-bold text-emerald-600">green</span> = correct catch, <span class="font-bold text-rose-500">red</span> = wrong press, <span class="font-bold text-amber-500">amber</span> = target you missed.</p>
                 </div>
 
                 <!-- Mode Selection -->
@@ -366,6 +409,9 @@
         const hintLine = document.getElementById('hint-line');
         const btnVisual = document.getElementById('btn-visual');
         const btnAudio = document.getElementById('btn-audio');
+        const tallyHits = document.getElementById('tally-hits');
+        const tallyFalse = document.getElementById('tally-false');
+        const tallyMisses = document.getElementById('tally-misses');
         const verdictEl = document.getElementById('review-verdict');
         const reviewSub = document.getElementById('review-sub');
         const bannerContainer = document.getElementById('banner-container');
@@ -887,6 +933,8 @@
                     audio: currentCfg.audio ? { hits: 0, misses: 0, fas: 0, crs: 0 } : null
                 }
             };
+            clearRespStyles();
+            updateTally();
             updateHUD();
 
             // 3-2-1 countdown, then begin trials
@@ -942,21 +990,31 @@
         function logTrial(idx) {
             const n = session.nLevel;
             if (idx < n) return; // Warmup trials are unscored
-            const cur = block.trials[idx];
-            const past = block.trials[idx - n];
 
-            if (block.stats.visual) {
-                const isTarget = cur.pos === past.pos;
-                const s = block.stats.visual;
-                if (responded.visual) { isTarget ? s.hits++ : s.fas++; }
-                else { isTarget ? s.misses++ : s.crs++; }
-            }
-            if (block.stats.audio) {
-                const isTarget = cur.letter === past.letter;
-                const s = block.stats.audio;
-                if (responded.audio) { isTarget ? s.hits++ : s.fas++; }
-                else { isTarget ? s.misses++ : s.crs++; }
-            }
+            ['visual', 'audio'].forEach(stream => {
+                const s = block.stats[stream];
+                if (!s) return;
+                const cur = block.trials[idx];
+                const past = block.trials[idx - n];
+                const isTarget = stream === 'visual' ? cur.pos === past.pos : cur.letter === past.letter;
+
+                if (!responded[stream]) {
+                    // Hits/false alarms were already tallied at press time for instant
+                    // feedback; only unanswered streams resolve here.
+                    if (isTarget) {
+                        s.misses++;
+                        // Brief amber cue on the unpressed button so missed targets stay learnable
+                        const btn = stream === 'visual' ? btnVisual : btnAudio;
+                        btn.classList.remove('resp-miss');
+                        void btn.offsetWidth; // restart animation if retriggered back-to-back
+                        btn.classList.add('resp-miss');
+                        setTimeout(() => btn.classList.remove('resp-miss'), 480);
+                    } else {
+                        s.crs++;
+                    }
+                }
+            });
+            updateTally();
         }
 
         function registerResponse(stream) {
@@ -966,7 +1024,44 @@
             if (responded[stream]) return;               // One response per stream per trial
 
             responded[stream] = true;
-            (stream === 'visual' ? btnVisual : btnAudio).classList.add('resp-pressed');
+            const btn = stream === 'visual' ? btnVisual : btnAudio;
+
+            // Immediate correctness feedback: compare against the N-back stimulus.
+            // Hits/false alarms are tallied right here so the flash reflects reality.
+            const cur = block.trials[block.index];
+            const past = block.trials[block.index - session.nLevel];
+            const isTarget = stream === 'visual' ? cur.pos === past.pos : cur.letter === past.letter;
+            const s = block.stats[stream];
+
+            btn.classList.remove('resp-pressed');
+            if (isTarget) {
+                s.hits++;
+                btn.classList.add('resp-hit');
+                setTimeout(() => btn.classList.remove('resp-hit'), 450);
+            } else {
+                s.fas++;
+                btn.classList.add('resp-false');
+                setTimeout(() => btn.classList.remove('resp-false'), 550);
+            }
+            updateTally();
+        }
+
+        function clearRespStyles() {
+            [btnVisual, btnAudio].forEach(b => b.classList.remove('resp-pressed', 'resp-hit', 'resp-false', 'resp-miss'));
+        }
+
+        // Live per-block tally shown under the response buttons
+        function updateTally() {
+            let hits = 0, fas = 0, misses = 0;
+            if (block) {
+                ['visual', 'audio'].forEach(k => {
+                    const s = block.stats[k];
+                    if (s) { hits += s.hits; fas += s.fas; misses += s.misses; }
+                });
+            }
+            tallyHits.innerText = hits;
+            tallyFalse.innerText = fas;
+            tallyMisses.innerText = misses;
         }
 
         // --- High Score Detection & Persistence ---
